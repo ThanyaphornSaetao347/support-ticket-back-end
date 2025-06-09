@@ -1,0 +1,20 @@
+import { TicketStatusLanguage } from "src/ticket_status_language/entities/ticket_status_language.entity";
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+
+@Entity({ name: 'ticket_status'})
+export class TicketStatus {
+    @PrimaryGeneratedColumn()
+    id: number;
+
+    @Column()
+    create_by: number;
+
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP'})
+    create_date: Date;
+
+    @Column({ default: true })
+    isenabled: boolean;
+
+    @OneToMany(() => TicketStatusLanguage, language => language.status)
+    language: TicketStatusLanguage[];
+}

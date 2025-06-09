@@ -1,0 +1,26 @@
+
+// src/ticket-categories-language/entities/ticket-categories-language.entity.ts
+import { TicketCategory } from 'src/ticket_categories/entities/ticket_category.entity';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn
+} from 'typeorm';
+
+@Entity('ticket_categories_language')
+export class TicketCategoryLanguage {  
+  @Column({ primary: true })
+  id: number;
+  
+  @Column({ primary: true, length: 3 })
+  language_id: string;
+
+  @Column({ length: 255 })
+  name: string;
+
+  @ManyToOne(() => TicketCategory, category => category.languages)
+  @JoinColumn({ name: 'category_id'})
+  category: TicketCategory;
+}
