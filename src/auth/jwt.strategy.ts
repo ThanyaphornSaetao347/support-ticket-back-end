@@ -1,21 +1,24 @@
-// src/auth/jwt.strategy.ts
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Users } from 'src/users/entities/user.entity';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     private configService: ConfigService,
+    @InjectRepository(Users)
+    private userRepo: Repository<Users>,
   ) {
-    // กำหนดค่าเริ่มต้นให้ secretOrKey เพื่อหลีกเลี่ยง undefined
     const jwtSecret = configService.get<string>('JWT_SECRET') || 'fallback_secret_key';
     
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ignoreExpiration: false,
-      secretOrKey: jwtSecret, // ใช้ตัวแปรที่เราตรวจสอบค่าแล้ว
+      ignoreExpiration: false, // สำคัญ: ต้องเป็น false เพื่อตรวจสอบ expiration
+      secretOrKey: jwtSecret,
     });
     
     console.log('JwtStrategy initialized with secret:', jwtSecret);
@@ -24,17 +27,30 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: any) {
     console.log('JwtStrategy.validate called with payload:', payload);
     
-    if (!payload) {
+    if (!payload ) {
       throw new UnauthorizedException('Invalid token payload');
     }
+
+    // ตรวจสอบว่า user ยังมีอยู่ใน database หรือไม่
+    const user = await this.userRepo.findOne({ 
+      where: { id: payload.sub },
+      select: ['id', 'username']
+    });
+
+    if (!user) {
+      console.log('User not found in database:', payload.sub);
+      throw new UnauthorizedException('User not found');
+    }
     
-    // ส่งคืนข้อมูลผู้ใช้ที่มีทั้ง userId, id และ sub
+    console.log('User validated successfully:', user);
+    
+    // ส่งคืนข้อมูลผู้ใช้
     return { 
-      id: payload.sub,           // หลักๆ ใช้ id
-      userId: payload.sub,       // สำรอง
-      user_id: payload.sub,      // สำรอง
-      sub: payload.sub,          // สำรอง
-      username: payload.username 
+      id: user.id,
+      userId: user.id,
+      user_id: user.id,
+      sub: user.id,
+      username: user.username 
     };
   }
 }

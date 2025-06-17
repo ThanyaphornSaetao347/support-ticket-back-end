@@ -11,14 +11,15 @@ import { UserModule } from 'src/users/users.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Users]), // 👈 ให้ AuthModule สามารถใช้ Repository<User>
+    TypeOrmModule.forFeature([Users]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: config.get<string>('JWT_EXPRIRES_IN') || '30m'
+          // แก้ typo: JWT_EXPRIRES_IN -> JWT_EXPIRES_IN
+          expiresIn: config.get<string>('JWT_EXPIRES_IN') || '3h'
         },
       }),
       inject: [ConfigService],
