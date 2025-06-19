@@ -3,9 +3,15 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
+import * as express from 'express';
+import { join } from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Serve static files
+  // app.use('/uploads/issue_attachment', express.static(join(__dirname, '..', 'uploads/issue_attachment')));
+
   
   // ตั้งค่า CORS สำหรับใช้ JWT Token
   app.enableCors({

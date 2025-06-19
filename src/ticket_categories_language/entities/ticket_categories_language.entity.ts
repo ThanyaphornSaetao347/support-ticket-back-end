@@ -13,6 +13,9 @@ import {
 export class TicketCategoryLanguage {  
   @Column({ primary: true })
   id: number;
+
+  @Column({ primary: true })
+  category_id: number;
   
   @Column({ primary: true, length: 3 })
   language_id: string;

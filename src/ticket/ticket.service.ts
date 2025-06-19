@@ -364,6 +364,35 @@ export class TicketService {
     }
   }
 
+  async getAllTicket(userId: number) {
+  try {
+    console.log('getAllTicket called with userId:', userId);
+
+    // ใช้ raw SQL แบบง่ายๆ ก่อน
+    const tickets = await this.ticketRepo.query(`
+      SELECT 
+        t.ticket_no,
+        t.categories_id,
+        t.project_id,
+        t.issue_description,
+        t.status_id,
+        t.create_by,
+        t.create_date
+      FROM ticket t
+      WHERE t.create_by = $1
+      ORDER BY t.create_date DESC
+    `, [userId]);
+
+    console.log('Raw SQL result count:', tickets.length);
+    console.log('Sample ticket:', tickets[0]);
+    
+    return tickets;
+  } catch (error) {
+    console.log('Error in getAllTicket:', error.message);
+    throw new Error(`Failed to get tickets: ${error.message}`);
+  }
+}
+
   async getAllMAsterFilter(userId: number): Promise<any> {
     try {
       // ดึง Categories

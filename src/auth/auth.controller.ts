@@ -1,3 +1,4 @@
+// src/auth/auth.controller.ts
 import { Body, Controller, Post, UseGuards, Request, Get, Headers, HttpException, HttpStatus } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -12,6 +13,18 @@ interface LoginResponse {
     username: string;
   } | null;
   access_token: string | null;
+  refresh_token?: string;
+  expires_in?: string;
+  expires_at?: string;
+  token_expires_timestamp?: number;
+}
+
+// เพิ่ม interface สำหรับ refresh token response
+interface RefreshTokenResponse {
+  code: number;
+  status: boolean;
+  message: string;
+  data?: any;
 }
 
 @Controller('api/auth')
@@ -57,6 +70,37 @@ export class AuthController {
     return correctedResponse;
   }
 
+  // แก้ไข method นี้โดยระบุ return type ชัดเจน
+  @Post('refresh')
+  async refreshToken(@Body('refresh_token') refreshToken: string): Promise<RefreshTokenResponse> {
+    try {
+      if (!refreshToken) {
+        throw new HttpException({
+          code: 0,
+          status: false,
+          message: 'Refresh token is required',
+          error: 'REFRESH_TOKEN_REQUIRED',
+        }, HttpStatus.BAD_REQUEST);
+      }
+
+      const result = await this.authService.refreshToken(refreshToken);
+      
+      return {
+        code: 1,
+        status: true,
+        message: 'Token refreshed successfully',
+        data: result,
+      };
+    } catch (error) {
+      throw new HttpException({
+        code: 0,
+        status: false,
+        message: 'Failed to refresh token',
+        error: 'REFRESH_TOKEN_INVALID',
+      }, HttpStatus.UNAUTHORIZED);
+    }
+  }
+
   // เพิ่ม endpoint สำหรับตรวจสอบ profile (ทดสอบ JWT)
   @Get('profile')
   @UseGuards(JwtAuthGuard)
@@ -69,7 +113,7 @@ export class AuthController {
     };
   }
 
-  // เพิ่ม endpoint สำหรับตรวจสอบ token expiration
+  // เพิ่ม endpoint สำหรับตรวจสอบ token expiration (ปรับปรุง)
   @Get('check-token')
   @UseGuards(JwtAuthGuard)
   async checkToken(@Headers('authorization') authHeader: string, @Request() req) {
@@ -80,10 +124,11 @@ export class AuthController {
       return {
         code: 1,
         status: true,
-        message: 'Token is valid',
+        message: 'Token status retrieved',
         data: {
           isValid: true,
           isExpiring: tokenInfo.isExpiring,
+          shouldRefresh: tokenInfo.shouldRefresh,
           expiresAt: tokenInfo.expiresAt,
           minutesLeft: tokenInfo.minutesLeft,
           user: req.user,
@@ -93,8 +138,11 @@ export class AuthController {
       throw new HttpException({
         code: 0,
         status: false,
-        message: 'Token is invalid',
+        message: 'Token is invalid or expired',
         error: 'TOKEN_INVALID',
+        data: {
+          shouldRedirectToLogin: true,
+        },
       }, HttpStatus.UNAUTHORIZED);
     }
   }
@@ -102,11 +150,17 @@ export class AuthController {
   // เพิ่ม endpoint สำหรับ logout
   @Post('logout')
   @UseGuards(JwtAuthGuard)
-  async logout() {
+  async logout(@Body('refresh_token') refreshToken?: string) {
+    // ในระบบจริง อาจต้องเพิ่ม refresh token ลงใน blacklist
+    // แต่ในกรณีนี้เราจะให้ client ลบ token เอง
+    
     return {
       code: 1,
       status: true,
-      message: 'Logout successful. Please remove token from client storage.',
+      message: 'Logout successful. Please remove tokens from client storage.',
+      data: {
+        instruction: 'Remove both access_token and refresh_token from localStorage/sessionStorage',
+      },
     };
   }
 
@@ -114,19 +168,86 @@ export class AuthController {
   @Post('validate')
   async validateToken(@Body('token') token: string) {
     try {
+      if (!token) {
+        throw new HttpException({
+          code: 0,
+          status: false,
+          message: 'Token is required',
+          error: 'TOKEN_REQUIRED',
+        }, HttpStatus.BAD_REQUEST);
+      }
+
       const user = await this.authService.validateToken(token);
+      const tokenInfo = await this.authService.checkTokenExpiration(token);
+
       return {
         code: 1,
         status: true,
         message: 'Token is valid',
-        user,
+        data: {
+          user,
+          tokenInfo: {
+            isExpiring: tokenInfo.isExpiring,
+            shouldRefresh: tokenInfo.shouldRefresh,
+            minutesLeft: tokenInfo.minutesLeft,
+            expiresAt: tokenInfo.expiresAt,
+          },
+        },
       };
     } catch (error) {
       throw new HttpException({
         code: 0,
         status: false,
-        message: error.message,
+        message: error.message || 'Token is invalid or expired',
         error: error.error || 'TOKEN_INVALID',
+        data: {
+          shouldRedirectToLogin: true,
+        },
+      }, HttpStatus.UNAUTHORIZED);
+    }
+  }
+
+  // เพิ่ม endpoint สำหรับตรวจสอบ refresh token
+  @Post('verify-refresh-token')
+  async verifyRefreshToken(@Body('refresh_token') refreshToken: string) {
+    try {
+      if (!refreshToken) {
+        throw new HttpException({
+          code: 0,
+          status: false,
+          message: 'Refresh token is required',
+          error: 'REFRESH_TOKEN_REQUIRED',
+        }, HttpStatus.BAD_REQUEST);
+      }
+
+      const isValid = await this.authService.verifyRefreshToken(refreshToken);
+      
+      if (!isValid) {
+        throw new HttpException({
+          code: 0,
+          status: false,
+          message: 'Invalid refresh token',
+          error: 'REFRESH_TOKEN_INVALID',
+        }, HttpStatus.UNAUTHORIZED);
+      }
+
+      return {
+        code: 1,
+        status: true,
+        message: 'Refresh token is valid',
+        data: {
+          isValid: true,
+        },
+      };
+    } catch (error) {
+      throw new HttpException({
+        code: 0,
+        status: false,
+        message: 'Invalid or expired refresh token',
+        error: 'REFRESH_TOKEN_INVALID',
+        data: {
+          shouldRedirectToLogin: true,
+        },
       }, HttpStatus.UNAUTHORIZED);
     }
   }

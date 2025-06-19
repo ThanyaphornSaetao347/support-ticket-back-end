@@ -1,3 +1,4 @@
+// src/auth/auth.service.ts
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,8 +16,10 @@ interface AuthResponse {
     username: string;
   } | null;
   access_token: string | null;
+  refresh_token?: string; // เพิ่ม refresh token
   expires_in?: string;
-  expires_at?: string; // เพิ่มเพื่อให้ frontend รู้ว่าหมดอายุเมื่อไหร่
+  expires_at?: string;
+  token_expires_timestamp?: number; // เพิ่ม timestamp
 }
 
 @Injectable()
@@ -53,13 +56,11 @@ export class AuthService {
   async validateUser(username: string, password: string): Promise<any> {
     console.log('Attempting to validate user:', username);
 
-    // ค้นหาผู้ใช้ด้วยชื่อผู้ใช้ที่ตรงกันเท่านั้น และทำให้มั่นใจว่าเป็นการค้นหาที่แม่นยำ
     const user = await this.userRepo.findOne({ 
       where: { username: username },
-      select: ['id', 'username', 'password'] // ระบุคอลัมน์ที่ต้องการ
+      select: ['id', 'username', 'password']
     });
 
-    // ตรวจสอบว่าพบผู้ใช้หรือไม่
     if (!user) {
       console.log('User not found:', username);
       return null;
@@ -67,7 +68,6 @@ export class AuthService {
 
     console.log('Found user ID:', user.id, 'Username:', user.username);
 
-    // ตรวจสอบรหัสผ่าน
     const isPasswordValid = await bcrypt.compare(password, user.password);
     console.log('Password validation result:', isPasswordValid);
 
@@ -76,7 +76,6 @@ export class AuthService {
       return null;
     }
 
-    // สร้างออบเจ็กต์ผลลัพธ์ที่ไม่มีรหัสผ่าน
     const { password: _, ...result } = user;
     console.log('Validation successful, returning user:', result);
 
@@ -97,7 +96,7 @@ export class AuthService {
       };
     }
     
-    // สร้าง JWT payload แบบธรรมดา (ลบ iat และ exp ออก)
+    // สร้าง JWT payload
     const payload = { 
       username: user.username, 
       sub: user.id,
@@ -108,14 +107,21 @@ export class AuthService {
     const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '3h';
     console.log('Token will expire in:', expiresIn);
     
-    // สร้าง token โดยให้ JwtModule จัดการ expiration
-    const token = this.jwtService.sign(payload);
+    // สร้าง access token
+    const accessToken = this.jwtService.sign(payload);
     
-    console.log('Generated token for user:', user.username);
+    // สร้าง refresh token (อายุยาวกว่า access token)
+    const refreshToken = this.jwtService.sign(
+      { ...payload, type: 'refresh' }, 
+      { expiresIn: '7d' } // refresh token หมดอายุ 7 วัน
+    );
+    
+    console.log('Generated tokens for user:', user.username);
     
     // คำนวณ expires_at สำหรับ frontend
     const expiresInSeconds = this.parseExpiresIn(expiresIn);
     const now = Math.floor(Date.now() / 1000);
+    const expiresTimestamp = now + expiresInSeconds;
     
     return {
       code: 1,
@@ -125,10 +131,63 @@ export class AuthService {
         id: user.id,
         username: user.username,
       },
-      access_token: token,
+      access_token: accessToken,
+      refresh_token: refreshToken,
       expires_in: expiresIn,
-      expires_at: new Date((now + expiresInSeconds) * 1000).toISOString(),
+      expires_at: new Date(expiresTimestamp * 1000).toISOString(),
+      token_expires_timestamp: expiresTimestamp,
     };
+  }
+
+  // เพิ่ม method สำหรับ refresh token
+  async refreshToken(refreshToken: string): Promise<AuthResponse> {
+    try {
+      const decoded = this.jwtService.verify(refreshToken);
+      
+      // ตรวจสอบว่าเป็น refresh token
+      if (decoded.type !== 'refresh') {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      const user = await this.userRepo.findOne({ 
+        where: { id: decoded.sub },
+        select: ['id', 'username']
+      });
+      
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      // สร้าง access token ใหม่
+      const payload = { 
+        username: user.username, 
+        sub: user.id,
+      };
+
+      const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '30m';
+      const accessToken = this.jwtService.sign(payload);
+      
+      const expiresInSeconds = this.parseExpiresIn(expiresIn);
+      const now = Math.floor(Date.now() / 1000);
+      const expiresTimestamp = now + expiresInSeconds;
+
+      return {
+        code: 1,
+        status: true,
+        message: 'Token refreshed successfully',
+        user: {
+          id: user.id,
+          username: user.username,
+        },
+        access_token: accessToken,
+        refresh_token: refreshToken, // ใช้ refresh token เดิม
+        expires_in: expiresIn,
+        expires_at: new Date(expiresTimestamp * 1000).toISOString(),
+        token_expires_timestamp: expiresTimestamp,
+      };
+    } catch (error) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
   }
 
   // Helper method สำหรับแปลง expires_in เป็น seconds
@@ -177,7 +236,12 @@ export class AuthService {
   }
 
   // เพิ่ม method สำหรับตรวจสอบว่า token ใกล้หมดอายุหรือไม่
-  async checkTokenExpiration(token: string): Promise<{ isExpiring: boolean; expiresAt: Date; minutesLeft: number }> {
+  async checkTokenExpiration(token: string): Promise<{ 
+    isExpiring: boolean; 
+    expiresAt: Date; 
+    minutesLeft: number;
+    shouldRefresh: boolean; 
+  }> {
     try {
       const decoded = this.jwtService.decode(token) as any;
       const expiresAt = new Date(decoded.exp * 1000);
@@ -189,13 +253,25 @@ export class AuthService {
         isExpiring: minutesLeft <= 15, // เตือนเมื่อเหลือ 15 นาที
         expiresAt,
         minutesLeft,
+        shouldRefresh: minutesLeft <= 5, // ควร refresh เมื่อเหลือ 5 นาที
       };
     } catch (error) {
       return {
         isExpiring: true,
         expiresAt: new Date(),
         minutesLeft: 0,
+        shouldRefresh: true,
       };
+    }
+  }
+
+  // เพิ่ม method สำหรับ verify refresh token
+  async verifyRefreshToken(refreshToken: string): Promise<boolean> {
+    try {
+      const decoded = this.jwtService.verify(refreshToken);
+      return decoded.type === 'refresh';
+    } catch (error) {
+      return false;
     }
   }
 }

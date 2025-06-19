@@ -141,6 +141,43 @@ export class TicketController {
     }
   }
 
+  @Post('getAllTicket')
+  @UseGuards(JwtAuthGuard)
+  async getAllTicket(@Request() req: any) {
+    try {
+      console.log('=== DEBUG getAllTicket ===');
+      console.log('req.user:', JSON.stringify(req.user, null, 2));
+      
+      const userId = req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub;
+      console.log('Extracted userId:', userId);
+      
+      if (!userId) {
+        return {
+          success: false,
+          message: 'User ID not found in token'
+        };
+      }
+      
+      const tickets = await this.ticketService.getAllTicket(userId);
+      console.log('Found tickets count:', tickets.length);
+      
+      return {
+        success: true,
+        data: tickets,
+        debug: {
+          userId: userId,
+          ticketCount: tickets.length
+        }
+      };
+    } catch (error) {
+      console.error('Error in getAllTicket:', error);
+      return {
+        success: false,
+        message: error.message
+      };
+    }
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('getAllMasterFilter')
   async getAllMAsterFilter(@Req() req) {

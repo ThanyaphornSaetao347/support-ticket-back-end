@@ -1,3 +1,4 @@
+// src/auth/jwt_auth.guard.ts
 import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -6,13 +7,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   handleRequest(err: any, user: any, info: any, context: ExecutionContext) {
     console.log('JwtAuthGuard.handleRequest called with:', { err, user, info });
 
-    // สำหรับ development/testing - ให้คงไว้ตามเดิม
-    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
-      console.log('Creating mock user for testing');
-      return { id: 1, username: 'test_user' };
-    }
-
-    // ตรวจสอบ TOKEN EXPIRED - สำคัญมาก!
+    // ตรวจสอบ TOKEN EXPIRED
     if (info && info.name === 'TokenExpiredError') {
       console.log('Token has expired:', info.message);
       throw new UnauthorizedException({
@@ -20,6 +15,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         statusCode: 401,
         error: 'TOKEN_EXPIRED',
         timestamp: new Date().toISOString(),
+        data: {
+          shouldRedirectToLogin: true,
+          shouldTryRefreshToken: true,
+          expiredAt: info.expiredAt,
+        },
       });
     }
 
@@ -30,10 +30,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         message: 'Invalid token format',
         statusCode: 401,
         error: 'INVALID_TOKEN',
+        data: {
+          shouldRedirectToLogin: true,
+          shouldTryRefreshToken: false,
+        },
       });
     }
 
-    // ตรวจสอบ error อื่นๆ
     if (err || !user) {
       console.log('JwtAuthGuard Error:', err);
       console.log('User:', user);
@@ -44,6 +47,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         message: errorMessage,
         statusCode: 401,
         error: 'UNAUTHORIZED',
+        data: {
+          shouldRedirectToLogin: true,
+          shouldTryRefreshToken: false,
+        },
       });
     }
 
