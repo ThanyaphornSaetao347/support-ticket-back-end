@@ -69,6 +69,23 @@ export class AttachmentService {
     });
   }
 
+  // ✅ ค้นหา attachment ที่เป็นรูปภาพด้วย ID
+  async findImageById(id: number) {
+  return await this.attachmentRepo
+    .createQueryBuilder('a')
+    .select([
+      'a.id',
+      'a.filename',
+      'a.extension',
+      'a.ticket_id',
+    ])
+    .where('a.id = :id', { id })
+    .andWhere('a.extension IN (:...extensions)', { 
+      extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff'] 
+    })
+    .getOne();
+}
+
   /**
    * ค้นหาไฟล์แนบตาม id
    */
