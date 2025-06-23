@@ -1,4 +1,4 @@
-import { IsNotEmpty } from "class-validator";
+import { IsNotEmpty, IsOptional } from "class-validator";
 
 export class CreateTicketStatusHistoryDto {
     @IsNotEmpty()
@@ -7,8 +7,8 @@ export class CreateTicketStatusHistoryDto {
     @IsNotEmpty()
     status_id: number;
 
-    @IsNotEmpty()
-    create_date: Date;
+    @IsOptional()
+    create_date?: Date;
 
     @IsNotEmpty()
     create_by: number;

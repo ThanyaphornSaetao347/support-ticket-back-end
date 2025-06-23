@@ -12,6 +12,6 @@ import { TicketStatusHistory } from './entities/ticket_status_history.entity';
   ],
   controllers: [TicketStatusHistoryController],
   providers: [TicketStatusHistoryService],
-  exports: [TypeOrmModule]
+  exports: [TicketStatusHistoryService]
 })
 export class TicketStatusHistoryModule {}

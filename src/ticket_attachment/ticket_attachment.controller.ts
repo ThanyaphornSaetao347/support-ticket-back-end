@@ -38,15 +38,15 @@ export class TicketAttachmentController {
     private readonly attachmentService: AttachmentService
   ) {}
 
-  // เพิ่ม endpoint ใหม่ใน TicketAttachmentController
+  // ✅ แก้ไข endpoint เดิมให้รองรับไฟล์ทุกประเภท
   @Get('images/issue_attachment/:id')
-  @UseGuards(JwtAuthGuard)
+  // @UseGuards(JwtAuthGuard)
   async getIssueAttachmentImage(
     @Param('id') id: number,
     @Res() res: Response
   ) {
     try {
-      console.log(`🖼️ Getting issue attachment image with ID: ${id}`);
+      console.log(`📎 Getting issue attachment file with ID: ${id}`);
       
       // ✅ หา attachment record ใน database
       const attachment = await this.attachmentService.findById(id);
@@ -58,63 +58,238 @@ export class TicketAttachmentController {
       
       console.log(`📄 Found attachment: ${JSON.stringify(attachment)}`);
       
-      // ✅ ตรวจสอบว่าเป็นรูปภาพ
-      const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff'];
-      if (!imageExtensions.includes(attachment.extension.toLowerCase())) {
-        console.log(`❌ File is not an image: ${attachment.extension}`);
-        throw new BadRequestException('File is not an image');
-      }
-      
       // ✅ สร้าง path ไปยังไฟล์ (ใช้ filename จาก database)
-      const imagePath = path.join(process.cwd(), 'uploads', 'issue_attachment', attachment.filename);
-      console.log(`📁 Looking for image at: ${imagePath}`);
+      const filePath = path.join(process.cwd(), 'uploads', 'issue_attachment', attachment.filename);
+      console.log(`📁 Looking for file at: ${filePath}`);
       
       // ✅ ตรวจสอบว่าไฟล์มีอยู่จริง
       try {
-        await stat(imagePath);
-        console.log(`✅ File found: ${imagePath}`);
+        await stat(filePath);
+        console.log(`✅ File found: ${filePath}`);
       } catch (error) {
-        console.log(`❌ File not found: ${imagePath}`);
-        throw new NotFoundException('Image file not found on disk');
+        console.log(`❌ File not found: ${filePath}`);
+        throw new NotFoundException('File not found on disk');
       }
       
       // ✅ อ่านไฟล์
-      const imageBuffer = await readFile(imagePath);
-      console.log(`📖 File read successfully, size: ${imageBuffer.length} bytes`);
+      const fileBuffer = await readFile(filePath);
+      console.log(`📖 File read successfully, size: ${fileBuffer.length} bytes`);
       
-      // ✅ กำหนด Content-Type
+      // ✅ กำหนด Content-Type ตามประเภทไฟล์
       const contentTypes = {
+        // Images
         'jpg': 'image/jpeg',
         'jpeg': 'image/jpeg',
         'png': 'image/png',
         'gif': 'image/gif',
         'webp': 'image/webp',
         'bmp': 'image/bmp',
-        'tiff': 'image/tiff'
+        'tiff': 'image/tiff',
+        // Documents
+        'pdf': 'application/pdf',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'ppt': 'application/vnd.ms-powerpoint',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        // Text files
+        'txt': 'text/plain',
+        'csv': 'text/csv',
+        'json': 'application/json',
+        'xml': 'application/xml',
+        'rtf': 'application/rtf',
+        // Archives
+        'zip': 'application/zip',
+        'rar': 'application/x-rar-compressed',
+        '7z': 'application/x-7z-compressed'
       };
       
-      const contentType = contentTypes[attachment.extension.toLowerCase()] || 'image/jpeg';
+      const extension = attachment.extension.toLowerCase();
+      const contentType = contentTypes[extension] || 'application/octet-stream';
       
-      // ✅ ส่งรูปภาพกลับ
+      // ✅ ตรวจสอบว่าเป็นไฟล์ที่ควรแสดง inline หรือ download
+      const inlineExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'pdf', 'txt', 'json', 'xml'];
+      const disposition = inlineExtensions.includes(extension) ? 'inline' : 'attachment';
+      
+      // ✅ ส่งไฟล์กลับ
       res.set({
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=3600', // Cache 1 ชั่วโมง
-        'Content-Disposition': `inline; filename="${attachment.filename}"`,
+        'Content-Disposition': `${disposition}; filename="${attachment.filename}"`,
+        'Content-Length': fileBuffer.length.toString(),
         'X-Attachment-ID': id,
-        'X-Ticket-ID': attachment.ticket_id
+        'X-Ticket-ID': attachment.ticket_id,
+        'X-File-Extension': extension
       });
       
-      res.send(imageBuffer);
-      console.log(`✅ Image sent successfully for ID: ${id}`);
+      res.send(fileBuffer);
+      console.log(`✅ File sent successfully for ID: ${id}, type: ${contentType}, disposition: ${disposition}`);
       
     } catch (error) {
-      console.error(`💥 Error getting image ${id}:`, error.message);
+      console.error(`💥 Error getting file ${id}:`, error.message);
       
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
       
-      throw new NotFoundException('Image not found');
+      throw new NotFoundException('File not found');
+    }
+  }
+
+  // 🆕 เพิ่ม endpoint ใหม่สำหรับไฟล์ทุกประเภท
+  @Get('files/issue_attachment/:id')
+  // @UseGuards(JwtAuthGuard)
+  async getIssueAttachmentFile(
+    @Param('id') id: number,
+    @Res() res: Response
+  ) {
+    try {
+      console.log(`📎 Getting issue attachment file with ID: ${id}`);
+      
+      // ✅ หา attachment record ใน database
+      const attachment = await this.attachmentService.findById(id);
+      
+      if (!attachment) {
+        console.log(`❌ Attachment ID ${id} not found in database`);
+        throw new NotFoundException('Attachment not found');
+      }
+      
+      console.log(`📄 Found attachment: ${JSON.stringify(attachment)}`);
+      
+      // ✅ สร้าง path ไปยังไฟล์
+      const filePath = path.join(process.cwd(), 'uploads', 'issue_attachment', attachment.filename);
+      console.log(`📁 Looking for file at: ${filePath}`);
+      
+      // ✅ ตรวจสอบว่าไฟล์มีอยู่จริง
+      try {
+        await stat(filePath);
+        console.log(`✅ File found: ${filePath}`);
+      } catch (error) {
+        console.log(`❌ File not found: ${filePath}`);
+        throw new NotFoundException('File not found on disk');
+      }
+      
+      // ✅ อ่านไฟล์
+      const fileBuffer = await readFile(filePath);
+      console.log(`📖 File read successfully, size: ${fileBuffer.length} bytes`);
+      
+      // ✅ กำหนด Content-Type ตามประเภทไฟล์
+      const contentTypes = {
+        // Images
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'bmp': 'image/bmp',
+        'tiff': 'image/tiff',
+        // Documents
+        'pdf': 'application/pdf',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'ppt': 'application/vnd.ms-powerpoint',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        // Text files
+        'txt': 'text/plain',
+        'csv': 'text/csv',
+        'json': 'application/json',
+        'xml': 'application/xml',
+        'rtf': 'application/rtf',
+        // Archives
+        'zip': 'application/zip',
+        'rar': 'application/x-rar-compressed',
+        '7z': 'application/x-7z-compressed'
+      };
+      
+      const extension = attachment.extension.toLowerCase();
+      const contentType = contentTypes[extension] || 'application/octet-stream';
+      
+      // ✅ ตรวจสอบว่าเป็นไฟล์ที่ควรแสดง inline หรือ download
+      const inlineExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'pdf', 'txt', 'json', 'xml'];
+      const disposition = inlineExtensions.includes(extension) ? 'inline' : 'attachment';
+      
+      // ✅ ส่งไฟล์กลับ
+      res.set({
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600', // Cache 1 ชั่วโมง
+        'Content-Disposition': `${disposition}; filename="${attachment.filename}"`,
+        'Content-Length': fileBuffer.length.toString(),
+        'X-Attachment-ID': id,
+        'X-Ticket-ID': attachment.ticket_id,
+        'X-File-Extension': extension
+      });
+      
+      res.send(fileBuffer);
+      console.log(`✅ File sent successfully for ID: ${id}, type: ${contentType}`);
+      
+    } catch (error) {
+      console.error(`💥 Error getting file ${id}:`, error.message);
+      
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      throw new NotFoundException('File not found');
+    }
+  }
+
+  // 🆕 เพิ่ม endpoint สำหรับดาวน์โหลดไฟล์ (force download)
+  @Get('download/issue_attachment/:id')
+  // @UseGuards(JwtAuthGuard)
+  async downloadIssueAttachment(
+    @Param('id') id: number,
+    @Res() res: Response
+  ) {
+    try {
+      console.log(`⬇️ Downloading issue attachment with ID: ${id}`);
+      
+      // ✅ หา attachment record ใน database
+      const attachment = await this.attachmentService.findById(id);
+      
+      if (!attachment) {
+        console.log(`❌ Attachment ID ${id} not found in database`);
+        throw new NotFoundException('Attachment not found');
+      }
+      
+      console.log(`📄 Found attachment for download: ${JSON.stringify(attachment)}`);
+      
+      // ✅ สร้าง path ไปยังไฟล์
+      const filePath = path.join(process.cwd(), 'uploads', 'issue_attachment', attachment.filename);
+      console.log(`📁 Looking for file at: ${filePath}`);
+      
+      // ✅ ตรวจสอบว่าไฟล์มีอยู่จริง
+      try {
+        const stats = await stat(filePath);
+        console.log(`✅ File found: ${filePath}, size: ${stats.size} bytes`);
+        
+        // ✅ ใช้ res.download() สำหรับการดาวน์โหลด
+        res.download(filePath, attachment.filename, (err) => {
+          if (err) {
+            console.error(`❌ Download error for file ${id}:`, err);
+            if (!res.headersSent) {
+              throw new NotFoundException('File download failed');
+            }
+          } else {
+            console.log(`✅ File downloaded successfully: ${attachment.filename}`);
+          }
+        });
+        
+      } catch (error) {
+        console.log(`❌ File not found: ${filePath}`);
+        throw new NotFoundException('File not found on disk');
+      }
+      
+    } catch (error) {
+      console.error(`💥 Error downloading file ${id}:`, error.message);
+      
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      throw new NotFoundException('File not found');
     }
   }
 
@@ -262,7 +437,7 @@ export class TicketAttachmentController {
             filename: attachment.filename, // ใช้ filename จาก database
             original_name: file.originalname,
             file_size: processedFile.size,
-            file_url: `/uploads/issue_attachment/${file.filename}`, // ใช้ filename จริงจาก file system
+            file_url: `/images/issue_attachment/${attachment.id}`, // ✅ ใช้ endpoint เดิม
             extension: attachment.extension
           });
 
