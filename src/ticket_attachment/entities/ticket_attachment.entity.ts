@@ -24,6 +24,12 @@ export class TicketAttachment {
     @Column()
     create_by: number;
 
+    @Column({ type: 'timestamp', nullable: true })
+    deleted_at?: Date;
+
+    @Column({ type: 'boolean', default: true})
+    isenabled: boolean;
+
     @ManyToOne(() => Ticket, ticket => ticket.attachments, { onDelete: 'CASCADE'})
     @JoinColumn({ name: 'ticket_id' })
     ticket: Ticket;

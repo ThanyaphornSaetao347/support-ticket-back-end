@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateTicketStatusDto } from './dto/create-ticket_status.dto';
 import { UpdateTicketStatusDto } from './dto/update-ticket_status.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { TicketStatus } from './entities/ticket_status.entity';
-import { Repository } from 'typeorm';
+import { Ticket } from 'src/ticket/entities/ticket.entity';
+import { DataSource, Repository } from 'typeorm';
 import { TicketStatusLanguage } from 'src/ticket_status_language/entities/ticket_status_language.entity';
+import { TicketStatusHistoryService } from 'src/ticket_status_history/ticket_status_history.service';
 
 @Injectable()
 export class TicketStatusService {
@@ -12,8 +14,12 @@ export class TicketStatusService {
     @InjectRepository(TicketStatus)
     private readonly statusRepo: Repository<TicketStatus>,
 
+    private readonly historyService: TicketStatusHistoryService,
+
     @InjectRepository(TicketStatusLanguage)
     private readonly statusLangRepo: Repository<TicketStatusLanguage>,
+
+    private dataSource: DataSource,
   ){}
 
 
@@ -253,4 +259,200 @@ export class TicketStatusService {
         };
       }
     }
+
+    // ✅ Method หลักสำหรับอัพเดต ticket status และบันทึก history
+  async updateTicketStatusAndHistory(
+    ticketId: number,
+    newStatusId: number,
+    userId: number,
+    fixIssueDescription?: string,
+    comment?: string
+  ): Promise<{
+    ticket: Ticket;
+    history: any;
+    status_name: string;
+  }> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      console.log(`🔄 Updating ticket ${ticketId} to status ${newStatusId} by user ${userId}`);
+
+      // ✅ ตรวจสอบว่า ticket มีอยู่หรือไม่
+      const ticket = await queryRunner.manager.findOne(Ticket, {
+        where: { id: ticketId, isenabled: true }
+      });
+
+      if (!ticket) {
+        throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
+      }
+
+      // ✅ ตรวจสอบว่า status ใหม่มีอยู่จริงหรือไม่
+      const statusExists = await this.validateStatusExists(newStatusId);
+      if (!statusExists) {
+        throw new NotFoundException(`Status with ID ${newStatusId} not found`);
+      }
+
+      // ✅ เก็บ status เดิม
+      const oldStatusId = ticket.status_id;
+      const now = new Date();
+
+      // ✅ อัพเดต ticket
+      ticket.status_id = newStatusId;
+      ticket.update_by = userId;
+      ticket.update_date = now;
+
+      // ✅ อัพเดต fix_issue_description ถ้ามีการส่งมา
+      if (fixIssueDescription) {
+        ticket.fix_issue_description = fixIssueDescription;
+      }
+
+      const updatedTicket = await queryRunner.manager.save(Ticket, ticket);
+
+      // ✅ บันทึก status history ผ่าน TicketStatusHistoryService
+      let history: any = null;
+      if (oldStatusId !== newStatusId) {
+        // เฉพาะเมื่อ status เปลี่ยนจริงๆ
+        const historyData = {
+          ticket_id: ticketId,
+          status_id: newStatusId,
+          create_by: userId,
+          comment: comment || `Status changed from ${oldStatusId} to ${newStatusId}`,
+        };
+
+        history = await this.historyService.createHistory(historyData);
+        console.log(`✅ Status history saved: ${oldStatusId} -> ${newStatusId}`);
+      } else if (comment) {
+        // ถ้า status ไม่เปลี่ยน แต่มี comment ให้บันทึก history อยู่ดี
+        const historyData = {
+          ticket_id: ticketId,
+          status_id: newStatusId,
+          create_by: userId,
+          comment: comment,
+        };
+
+        history = await this.historyService.createHistory(historyData);
+        console.log(`✅ Comment history saved for status ${newStatusId}`);
+      }
+
+      // ✅ ดึงชื่อ status สำหรับ response
+      const statusName = await this.getStatusNameFromDatabase(newStatusId);
+
+      await queryRunner.commitTransaction();
+
+      console.log(`✅ Ticket ${ticketId} status updated successfully`);
+
+      return {
+        ticket: updatedTicket,
+        history: history,
+        status_name: statusName,
+      };
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error('💥 Error updating ticket status:', error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // ✅ Helper method สำหรับดึงชื่อ status จากฐานข้อมูล
+  private async getStatusNameFromDatabase(statusId: number): Promise<string> {
+    try {
+      // ดึงชื่อ status จาก ticket_status_language
+      const statusLang = await this.dataSource.manager
+        .createQueryBuilder()
+        .select('tsl.name')
+        .from('ticket_status_language', 'tsl')
+        .innerJoin('ticket_status', 'ts', 'ts.id = tsl.status_id')
+        .where('tsl.status_id = :statusId', { statusId })
+        .andWhere('tsl.language_id = :lang', { lang: 'th' }) // หรือภาษาที่ต้องการ
+        .andWhere('ts.isenabled = true')
+        .getRawOne();
+
+      return statusLang?.name || `Status ${statusId}`;
+    } catch (error) {
+      console.error('Error getting status name:', error);
+      return `Status ${statusId}`;
+    }
+  }
+
+  // ✅ Method สำหรับดึง history ของ ticket ผ่าน HistoryService
+  async getTicketStatusHistory(ticketId: number): Promise<any[]> {
+    try {
+      return await this.historyService.getTicketHistory(ticketId);
+    } catch (error) {
+      console.error('Error getting ticket status history:', error);
+      throw error;
+    }
+  }
+
+  // ✅ Method สำหรับ validate status
+  async validateStatusExists(statusId: number): Promise<boolean> {
+    try {
+      const status = await this.statusRepo.findOne({
+        where: { id: statusId, isenabled: true }
+      });
+      return !!status;
+    } catch (error) {
+      console.error('Error validating status:', error);
+      return false;
+    }
+  }
+
+  // ✅ Method สำหรับดึง status พร้อมชื่อ
+  async getStatusWithName(statusId: number, languageId: string = 'th'): Promise<{
+    id: number;
+    name: string;
+  } | null> {
+    try {
+      const result = await this.statusRepo
+        .createQueryBuilder('ts')
+        .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = ts.id AND tsl.language_id = :lang', { lang: languageId })
+        .select([
+          'ts.id AS id',
+          'tsl.name AS name',
+        ])
+        .where('ts.id = :statusId', { statusId })
+        .andWhere('ts.isenabled = true')
+        .getRawOne();
+
+      return result ? {
+        id: result.id,
+        name: result.name || `Status ${statusId}`
+      } : null;
+    } catch (error) {
+      console.error('Error getting status with name:', error);
+      return null;
+    }
+  }
+
+  // ✅ Method สำหรับดึงทุก status ที่ active
+  async getAllActiveStatuses(languageId: string = 'th'): Promise<{
+    id: number;
+    name: string;
+  }[]> {
+    try {
+      const statuses = await this.statusRepo
+        .createQueryBuilder('ts')
+        .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = ts.id AND tsl.language_id = :lang', { lang: languageId })
+        .select([
+          'ts.id AS id',
+          'tsl.name AS name',
+        ])
+        .where('ts.isenabled = true')
+        .orderBy('ts.id', 'ASC')
+        .getRawMany();
+
+      return statuses.map(s => ({
+        id: s.id,
+        name: s.name || `Status ${s.id}`
+      }));
+    } catch (error) {
+      console.error('Error getting all active statuses:', error);
+      return [];
+    }
+  }
   }

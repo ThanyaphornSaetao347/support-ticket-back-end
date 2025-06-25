@@ -25,6 +25,7 @@ export class TicketStatusHistoryController {
 
   // ✅ POST - บันทึก status change (แก้ไขแล้ว)
   @Post('history/:ticketId')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
   async createHistory(
     @Param('ticketId', ParseIntPipe) ticketId: number,

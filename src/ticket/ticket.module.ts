@@ -10,6 +10,9 @@ import { TicketAttachmentController } from 'src/ticket_attachment/ticket_attachm
 import { TicketCategory } from 'src/ticket_categories/entities/ticket_category.entity';
 import { Project } from 'src/project/entities/project.entity';
 import { TicketStatus } from 'src/ticket_status/entities/ticket_status.entity';
+import { TicketStatusHistoryModule } from 'src/ticket_status_history/ticket_status_history.module';
+import { TicketStatusService } from 'src/ticket_status/ticket_status.service';
+import { TicketStatusModule } from 'src/ticket_status/ticket_status.module';
 
 @Module({
   imports: [
@@ -20,13 +23,17 @@ import { TicketStatus } from 'src/ticket_status/entities/ticket_status.entity';
       TicketCategory,
       Project,
       TicketStatus
-    ])
+    ]),
+    TicketStatusHistoryModule,
+    TicketStatusModule
   ],
   controllers: [TicketController, TicketAttachmentController],
   providers: [
     TicketService,
-    AttachmentService
+    AttachmentService,
   ],
-  exports: [TicketService]
+  exports: [
+    TicketService,
+  ]
 })
 export class TicketModule {}

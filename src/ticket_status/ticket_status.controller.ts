@@ -54,4 +54,25 @@ export class TicketStatusController {
     
     return this.statusService.createStatus(body);
   }
+
+  @Get('ticketHistory/:id')
+  @UseGuards(JwtAuthGuard)
+  async getTicketHistory(@Param('id', ParseIntPipe) ticketId: number) {
+    try {
+      const history = await this.statusService.getTicketStatusHistory(ticketId);
+      
+      return {
+        code: 1,
+        message: 'Success',
+        data: history,
+      };
+    } catch (error) {
+      console.error('Error getting ticket history:', error);
+      return {
+        code: 2,
+        message: error.message || 'Failed to get ticket history',
+        data: null,
+      };
+    }
+  }
 }

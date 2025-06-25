@@ -8,21 +8,20 @@ import {
   ParseIntPipe,
   UseGuards,
   Request,
-  BadRequestException,
-  Query,
-  Req
+  Req,
+  Delete,
 } from '@nestjs/common';
 import { TicketService } from './ticket.service';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
 import { AttachmentService } from 'src/ticket_attachment/ticket_attachment.service';
+import { TicketStatusService } from 'src/ticket_status/ticket_status.service';
 
 @Controller('api')
 export class TicketController {
   constructor(
     private readonly ticketService: TicketService,
-    private readonly attachmentService: AttachmentService,
-  ) {}
+  ){}
   
   // แก้ไข saveTicket method ใน TicketController
   @UseGuards(JwtAuthGuard)
@@ -109,14 +108,31 @@ export class TicketController {
     }
   }
 
+  // ✅ แก้ไข getTicketData ให้ใช้ ticket_no แทน ticket_id
   @Post('getTicketData')
-  async getTicketData(@Body() body: { ticket_id: number }, @Req() req: any) {
+  async getTicketData(@Body() body: { ticket_no: string }, @Req() req: any) {
     try {
-      const ticketId = body.ticket_id;
-      if (!ticketId) {
+      let ticketNo = body.ticket_no;
+      
+      if (!ticketNo) {
         return {
           code: 2,
-          message: 'กรุณาส่ง ticket_id',
+          message: 'กรุณาส่ง ticket_no',
+          data: null,
+        };
+      }
+
+      // ✅ Normalize ticket_no
+      ticketNo = ticketNo.toString().trim().toUpperCase();
+      if (!ticketNo.startsWith('T')) {
+        ticketNo = 'T' + ticketNo;
+      }
+
+      // ✅ ตรวจสอบ format (optional)
+      if (!this.isValidTicketNoFormat(ticketNo)) {
+        return {
+          code: 2,
+          message: 'รูปแบบ ticket_no ไม่ถูกต้อง (ต้องเป็น Txxxxxxxxx)',
           data: null,
         };
       }
@@ -124,7 +140,8 @@ export class TicketController {
       // ✅ ดึง baseUrl อัตโนมัติจาก Request
       const baseUrl = `${req.protocol}://${req.get('host')}`;
 
-      const data = await this.ticketService.getTicketData(ticketId, baseUrl);
+      // ✅ ใช้ method ใหม่ที่รับ ticket_no
+      const data = await this.ticketService.getTicketData(ticketNo, baseUrl);
 
       return {
         code: 1,
@@ -135,7 +152,7 @@ export class TicketController {
       console.error('Error:', error.message);
       return {
         code: 2,
-        message: 'เกิดข้อผิดพลาด',
+        message: error.message || 'เกิดข้อผิดพลาด',
         data: null,
       };
     }
@@ -185,59 +202,147 @@ export class TicketController {
     return await this.ticketService.getAllMAsterFilter(userId)
   }
 
+  // ✅ Specific ticket routes (with "ticket" prefix) come BEFORE generic :id route
+  @Get('tickets/:ticket_no')
+  @UseGuards(JwtAuthGuard)
+  async getTicketByNo(@Param('ticket_no') ticket_no: string, @Req() req: any) {
+    try {
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const data = await this.ticketService.getTicketData(ticket_no, baseUrl);
+
+      return {
+        code: 1,
+        message: 'Success',
+        data,
+      };
+    } catch (error) {
+      console.error('Error:', error.message);
+      return {
+        code: 2,
+        message: error.message || 'เกิดข้อผิดพลาด',
+        data: null,
+      };
+    }
+  }
+
+  @Put('tickets/:ticket_no')
+  @UseGuards(JwtAuthGuard)
+  async updateTicketByNo(
+    @Param('ticket_no') ticket_no: string,
+    @Body() updateDto: UpdateTicketDto,
+    @Request() req: any
+  ) {
+    try {
+      const userId = this.extractUserId(req);
+      
+      if (!userId) {
+        return {
+          code: 2,
+          message: 'User not authenticated',
+          data: null,
+        };
+      }
+
+      const ticket = await this.ticketService.updateTicket(ticket_no, updateDto, userId);
+
+      return {
+        code: 1,
+        message: 'Ticket updated successfully',
+        data: ticket,
+      };
+    } catch (error) {
+      console.error('Error:', error.message);
+      return {
+        code: 2,
+        message: error.message || 'เกิดข้อผิดพลาด',
+        data: null,
+      };
+    }
+  }
+
+  @Delete('tickets/:ticket_no')
+  @UseGuards(JwtAuthGuard)
+  async deleteTicketByNo(
+    @Param('ticket_no') ticket_no: string,
+    @Request() req: any
+  ) {
+    try {
+      const userId = this.extractUserId(req);
+      
+      if (!userId) {
+        return {
+          code: 2,
+          message: 'User not authenticated',
+          data: null,
+        };
+      }
+
+      await this.ticketService.softDeleteTicket(ticket_no, userId);
+
+      return {
+        code: 1,
+        message: 'Ticket deleted successfully',
+        data: null,
+      };
+    } catch (error) {
+      console.error('Error:', error.message);
+      return {
+        code: 2,
+        message: error.message || 'เกิดข้อผิดพลาด',
+        data: null,
+      };
+    }
+  }
+
+  @Post('tickets/restore/:ticket_no')
+  @UseGuards(JwtAuthGuard)
+  async restoreTicketByNo(
+    @Param('ticket_no') ticket_no: string,
+    @Request() req: any
+  ) {
+    try {
+      const userId = this.extractUserId(req);
+      
+      if (!userId) {
+        return {
+          code: 2,
+          message: 'User not authenticated',
+          data: null,
+        };
+      }
+
+      await this.ticketService.restoreTicketByNo(ticket_no, userId);
+
+      return {
+        code: 1,
+        message: 'Ticket restored successfully',
+        data: null,
+      };
+    } catch (error) {
+      console.error('Error:', error.message);
+      return {
+        code: 2,
+        message: error.message || 'เกิดข้อผิดพลาด',
+        data: null,
+      };
+    }
+  }
+
+  // ✅ Generic :id route comes LAST to avoid conflicts
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   async getTicket(@Param('id', ParseIntPipe) id: number) {
     return this.ticketService.findTicketById(id);
   }
 
-  @Put(':id')
-  @UseGuards(JwtAuthGuard)
-  async updateTicket(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateTicketDto,
-    @Request() req,
-  ) {
-    console.log('Update request user object:', req.user); // Debug log
-    
-    // ลองหลายวิธีในการเข้าถึง user ID
-    let userId = null;
-    if (req.user) {
-      userId = req.user.id || req.user.sub || req.user.user_id || req.user.userId;
-    }
-
-    console.log('Update extracted userId:', userId); // Debug log
-    
-    if (!userId) {
-      throw new BadRequestException('User not authenticated properly');
-    }
-    
-    dto.update_by = userId;
-    
-    return this.ticketService.updateTicket(id, dto);
+  // ✅ Helper methods
+  private isValidTicketNoFormat(ticketNo: string): boolean {
+    // Format: T + 9 digits (T250660062)
+    const ticketPattern = /^T\d{9}$/;
+    return ticketPattern.test(ticketNo);
   }
 
-  @Get()
-  @UseGuards(JwtAuthGuard)
-  async getMyTickets(@Request() req, @Query('with_attachments') withAttachments?: string) {
-    console.log('GetMyTickets request user object:', req.user); // Debug log
-    
-    // ลองหลายวิธีในการเข้าถึง user ID
-    let userId = null;
-    if (req.user) {
-      userId = req.user.id || req.user.sub || req.user.user_id || req.user.userId;
-    }
-
-    console.log('GetMyTickets extracted userId:', userId); // Debug log
-    
-    if (!userId) {
-      throw new BadRequestException('User not authenticated properly');
-    }
-    
-    if (withAttachments === 'true') {
-      return this.ticketService.getTicketsWithAttachmentsByUserId(userId);
-    }
-    
-    return this.ticketService.getTicketsByUserId(userId);
+  private extractUserId(req: any): number {
+    return req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub;
   }
 }

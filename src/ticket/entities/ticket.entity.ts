@@ -59,6 +59,10 @@ export class Ticket {
   @Column({ type: 'int' })
   update_by: number;
 
+  @Column({ type: 'timestamp', nullable: true })
+  deleted_at?: Date;
+
+
   @Column({ type: 'boolean', default: true })
   isenabled: boolean;
 

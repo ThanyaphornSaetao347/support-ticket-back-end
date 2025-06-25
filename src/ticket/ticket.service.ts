@@ -1,13 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Like, Repository } from 'typeorm';
+import { DataSource, LessThan, Repository, MoreThan, FindManyOptions } from 'typeorm';
 import { Ticket } from './entities/ticket.entity';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketStatusHistory } from 'src/ticket_status_history/entities/ticket_status_history.entity';
 import { TicketAttachment } from 'src/ticket_attachment/entities/ticket_attachment.entity';
 import { TicketCategory } from 'src/ticket_categories/entities/ticket_category.entity';
-import { Project } from 'src/project/entities/project.entity';
+import { AttachmentService } from 'src/ticket_attachment/ticket_attachment.service';
+import { TicketStatus } from 'src/ticket_status/entities/ticket_status.entity';
+import { TicketStatusHistoryService } from 'src/ticket_status_history/ticket_status_history.service';
+import { TicketStatusLanguage } from 'src/ticket_status_language/entities/ticket_status_language.entity';
+import { CreateTicketStatusDto } from 'src/ticket_status/dto/create-ticket_status.dto';
 
 @Injectable()
 export class TicketService {
@@ -16,11 +20,15 @@ export class TicketService {
     private readonly ticketRepo: Repository<Ticket>,
     @InjectRepository(TicketStatusHistory)
     private readonly historyRepo: Repository<TicketStatusHistory>,
+    private readonly historyService: TicketStatusHistoryService,
     @InjectRepository(TicketAttachment)
     private readonly attachmentRepo: Repository<TicketAttachment>,
+    private readonly attachmentService: AttachmentService,
     @InjectRepository(TicketCategory)
     private readonly categoryRepo: Repository<TicketCategory>,
     private readonly dataSource: DataSource,
+    @InjectRepository(TicketStatus)
+    private readonly statusRepo: Repository<TicketStatus>,
   ) {}
 
   async createTicket(dto: any) {
@@ -52,7 +60,7 @@ export class TicketService {
           create_by: userId ?? '',
           update_date: new Date(),
           update_by: userId ?? '',
-          isenabled: false,
+          isenabled: true,
         });
         
         // ⚠️ ปัญหาหลัก: ต้อง await การ save
@@ -130,113 +138,72 @@ export class TicketService {
 
   async saveTicket(dto: any, userId: number): Promise<{ ticket_id: number, ticket_no: string }> {
     try {
-      console.log('DTO received:', dto);
-      console.log('User ID:', userId);
-
-      // Validate DTO
-      if (!dto) {
-        throw new BadRequestException('Request body is required');
-      }
-
-      // Validate required fields
-      if (!dto.project_id) {
-        throw new BadRequestException('project_id is required');
-      }
-
-      if (!dto.categories_id) {
-        throw new BadRequestException('categories_id is required');
-      }
-
-      if (!dto.issue_description) {
-        throw new BadRequestException('issue_description is required');
-      }
+      if (!dto) throw new BadRequestException('Request body is required');
 
       const now = new Date();
       let ticket;
-      let isNewTicket = false;
       let shouldSaveStatusHistory = false;
+      let oldStatusId = null;
+      let newStatusId = dto.status_id || 1;
 
       if (dto.ticket_id) {
         // Update existing ticket
         ticket = await this.ticketRepo.findOne({ where: { id: dto.ticket_id } });
-        if (!ticket) {
-          throw new BadRequestException('ไม่พบ ticket ที่ต้องการอัปเดต');
-        }
+        if (!ticket) throw new BadRequestException('ไม่พบ ticket ที่ต้องการอัปเดต');
 
-        // เช็คว่า status เปลี่ยนหรือไม่
-        const oldStatusId = ticket.status_id;
-        const newStatusId = dto.status_id || oldStatusId;
+        oldStatusId = ticket.status_id;
 
+        // อัปเดตข้อมูล ticket
         ticket.project_id = dto.project_id;
         ticket.categories_id = dto.categories_id;
         ticket.issue_description = dto.issue_description;
-        ticket.status_id = newStatusId;
+        ticket.status_id = newStatusId;  // อัปเดต status
         ticket.issue_attachment = dto.issue_attachment || ticket.issue_attachment;
         ticket.update_by = userId;
         ticket.update_date = now;
 
         await this.ticketRepo.save(ticket);
 
-        // ถ้า status เปลี่ยน ให้เช็คว่าต้องบันทึก status history หรือไม่
         if (oldStatusId !== newStatusId) {
           shouldSaveStatusHistory = true;
         }
       } else {
-        // Create new ticket
-        isNewTicket = true;
-        shouldSaveStatusHistory = true;
-
+        // สร้าง ticket ใหม่
         const ticketNo = await this.generateTicketNumber();
 
-        const newTicket = this.ticketRepo.create({
+        ticket = this.ticketRepo.create({
           ticket_no: ticketNo,
           project_id: dto.project_id,
           categories_id: dto.categories_id,
           issue_description: dto.issue_description,
-          status_id: dto.status_id || 1, // Default status
+          status_id: newStatusId, // กำหนดสถานะตั้งต้น
           create_by: userId,
           create_date: now,
           update_by: userId,
           update_date: now,
-          isenabled: false,
+          isenabled: true, // ถ้าต้องการเปิดใช้งานทันที
         });
 
-        ticket = await this.ticketRepo.save(newTicket);
+        ticket = await this.ticketRepo.save(ticket);
+        shouldSaveStatusHistory = true;
       }
 
-      // บันทึก status history เฉพาะเมื่อจำเป็น
+      // บันทึก status history เฉพาะเมื่อสถานะเปลี่ยนหรือใหม่
       if (shouldSaveStatusHistory) {
-        const statusId = dto.status_id || 1;
-
-        // เช็คว่า status นี้เคยถูกบันทึกไว้แล้วหรือไม่สำหรับ ticket นี้
-        const existingStatusHistory = await this.historyRepo.findOne({
-          where: {
-            ticket_id: ticket.id,
-            status_id: statusId,
-          },
-          order: {
-            create_date: 'DESC',
-          },
+        // ตรวจสอบว่ามีสถานะนี้ใน history แล้วหรือยัง (ป้องกันซ้ำ)
+        const existingHistory = await this.historyRepo.findOne({
+          where: { ticket_id: ticket.id, status_id: newStatusId },
+          order: { create_date: 'DESC' },
         });
 
-        // บันทึก status history เฉพาะเมื่อยังไม่เคยมี status นี้มาก่อน
-        if (!existingStatusHistory) {
-          try {
-            const newStatus = this.historyRepo.create({
-              ticket_id: ticket.id,
-              status_id: statusId,
-              create_date: now,
-              create_by: userId,
-            });
-            
-            await this.historyRepo.save(newStatus);
-            console.log(`Status history saved: ticket_id=${ticket.id}, status_id=${statusId}`);
-          } catch (error) {
-            console.error('Error saving status history:', error);
-            // Don't throw error here, just log it
-          }
-        } else {
-          console.log(`Status history already exists: ticket_id=${ticket.id}, status_id=${statusId}`);
+        if (!existingHistory) {
+          const newHistory = this.historyRepo.create({
+            ticket_id: ticket.id,
+            status_id: newStatusId,
+            create_date: now,
+            create_by: userId,
+          });
+          await this.historyRepo.save(newHistory);
         }
       }
 
@@ -250,11 +217,27 @@ export class TicketService {
     }
   }
 
-  async getTicketData(ticket_id: number, baseUrl: string) {
+  // ✅ เพิ่ม helper method สำหรับ normalize ticket_no
+  private normalizeTicketNo(ticketIdentifier: string | number): string {
+    let ticketNo = ticketIdentifier.toString().trim().toUpperCase();
+    
+    // ถ้าไม่มี T ให้เพิ่มให้
+    if (!ticketNo.startsWith('T')) {
+      ticketNo = 'T' + ticketNo;
+    }
+    
+    return ticketNo;
+  }
+
+// ✅ เพิ่ม method ใหม่ที่ใช้ ticket_no
+  async getTicketData(ticket_no: string, baseUrl: string) {
     try {
       const attachmentPath = '/images/issue_attachment/';
+      
+      // ✅ Normalize ticket_no
+      const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
 
-      // ✅ Query ข้อมูลหลัก Ticket
+      // ✅ Query ข้อมูลหลัก Ticket ด้วย ticket_no
       const ticket = await this.ticketRepo
         .createQueryBuilder('t')
         .leftJoin('ticket_categories_language', 'tcl', 'tcl.category_id = t.categories_id AND tcl.language_id = :lang', { lang: 'th' })
@@ -286,24 +269,30 @@ export class TicketService {
           `uc.firstname || ' ' || uc.lastname AS create_by`,
           `uu.firstname || ' ' || uu.lastname AS update_by`,
         ])
-        .where('t.id = :id', { id: ticket_id })
+        .where('UPPER(t.ticket_no) = UPPER(:ticket_no)', { ticket_no: normalizedTicketNo })
+        .andWhere('t.isenabled = true') // ✅ เฉพาะที่ไม่ถูกลบ
         .getRawOne();
 
       if (!ticket) {
-        throw new NotFoundException(`ไม่พบ Ticket ID: ${ticket_id}`);
+        throw new NotFoundException(`ไม่พบ Ticket No: ${normalizedTicketNo}`);
       }
 
-      // ✅ Query Attachments 
+      // ✅ ใช้ ticket.id ที่ได้จาก query ในการหา attachments และ history
+      const ticket_id = ticket.id;
+
+      // ✅ Query Attachments (เฉพาะที่ไม่ถูกลบ)
       const issueAttachment = await this.attachmentRepo
         .createQueryBuilder('a')
         .select(['a.id AS attachment_id', 'a.extension', 'a.filename'])
         .where('a.ticket_id = :ticket_id AND a.type = :type', { ticket_id, type: 'reporter' })
+        .andWhere('a.isenabled = true') // ✅ เฉพาะที่ไม่ถูกลบ
         .getRawMany();
 
       const fixAttachment = await this.attachmentRepo
         .createQueryBuilder('a')
         .select(['a.id AS attachment_id', 'a.extension', 'a.filename'])
         .where('a.ticket_id = :ticket_id AND a.type = :type', { ticket_id, type: 'supporter' })
+        .andWhere('a.isenabled = true') // ✅ เฉพาะที่ไม่ถูกลบ
         .getRawMany();
 
       // ✅ Query Status History
@@ -359,39 +348,129 @@ export class TicketService {
         })),
       };
     } catch (error) {
-      console.error('Error in getTicketData:', error);
+      console.error('Error in getTicketDataByNo:', error);
+      throw error;
+    }
+  }
+
+  // ✅ เพิ่ม method สำหรับ soft delete ticket ด้วย ticket_no
+  async softDeleteTicket(ticket_no: string, userId: number): Promise<void> {
+    const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
+    
+    const ticket = await this.ticketRepo.findOne({ 
+      where: { 
+        ticket_no: normalizedTicketNo,
+        isenabled: true 
+      } 
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`ไม่พบ Ticket No: ${normalizedTicketNo}`);
+    }
+
+    // ตรวจสอบสิทธิ์
+    if (ticket.create_by !== userId) {
+      throw new ForbiddenException('You do not have permission to delete this ticket');
+    }
+
+    // Soft delete ticket
+    ticket.isenabled = false;
+    ticket.deleted_at = new Date();
+    ticket.update_by = userId;
+    ticket.update_date = new Date();
+
+    await this.ticketRepo.save(ticket);
+
+    // Soft delete attachments ด้วย
+    await this.attachmentService.softDeleteAllByTicketId(ticket.id);
+  }
+
+  async restoreTicketByNo(ticket_no: string, userId: number): Promise<void> {
+    const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
+    
+    const ticket = await this.ticketRepo.findOne({ 
+      where: { 
+        ticket_no: normalizedTicketNo,
+        isenabled: false 
+      } 
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`ไม่พบ Ticket No ที่ถูกลบ: ${normalizedTicketNo}`);
+    }
+
+    // ตรวจสอบสิทธิ์
+    if (ticket.create_by !== userId) {
+      throw new ForbiddenException('You do not have permission to restore this ticket');
+    }
+
+    // ตรวจสอบว่ายังกู้คืนได้หรือไม่ (ภายใน 7 วัน)
+    if (ticket.deleted_at) {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      if (ticket.deleted_at < sevenDaysAgo) {
+        throw new BadRequestException('Cannot restore ticket. Restoration period expired (over 7 days).');
+      }
+    }
+
+    // Restore ticket
+    ticket.isenabled = true;
+    ticket.deleted_at = undefined;
+    ticket.update_by = userId;
+    ticket.update_date = new Date();
+
+    await this.ticketRepo.save(ticket);
+
+    // Restore attachments ด้วย
+    await this.attachmentService.restoreAllByTicketId(ticket.id);
+  }
+
+  // ✅ เพิ่ม method ค้นหา ticket จาก ticket_no
+  async findTicketByNo(ticket_no: string): Promise<Ticket | null> {
+    try {
+      const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
+      
+      return await this.ticketRepo.findOne({ 
+        where: { 
+          ticket_no: normalizedTicketNo,
+          isenabled: true 
+        } 
+      });
+    } catch (error) {
+      console.error('Error in findTicketByNo:', error);
       throw error;
     }
   }
 
   async getAllTicket(userId: number) {
-  try {
-    console.log('getAllTicket called with userId:', userId);
+    try {
+      console.log('getAllTicket called with userId:', userId);
 
-    const tickets = await this.ticketRepo
-      .createQueryBuilder('t')
-      .select([
-        't.ticket_no',
-        't.categories_id', 
-        't.project_id',
-        't.issue_description',
-        't.status_id',
-        't.create_by',
-        't.create_date'
-      ])
-      .where('t.create_by = :userId', { userId })
-      .orderBy('t.create_date', 'DESC')
-      .getMany();
+      const tickets = await this.ticketRepo
+        .createQueryBuilder('t')
+        .select([
+          't.ticket_no',
+          't.categories_id', 
+          't.project_id',
+          't.issue_description',
+          't.status_id',
+          't.create_by',
+          't.create_date'
+        ])
+        .where('t.create_by = :userId', { userId })
+        .orderBy('t.create_date', 'DESC')
+        .getMany();
 
-    console.log('Raw SQL result count:', tickets.length);
-    console.log('Sample ticket:', tickets[0]);
-    
-    return tickets;
-  } catch (error) {
-    console.log('Error in getAllTicket:', error.message);
-    throw new Error(`Failed to get tickets: ${error.message}`);
+      console.log('Raw SQL result count:', tickets.length);
+      console.log('Sample ticket:', tickets[0]);
+      
+      return tickets;
+    } catch (error) {
+      console.log('Error in getAllTicket:', error.message);
+      throw new Error(`Failed to get tickets: ${error.message}`);
+    }
   }
-}
 
   async getAllMAsterFilter(userId: number): Promise<any> {
     try {
@@ -451,15 +530,54 @@ export class TicketService {
     }
   }
 
-  async updateTicket(id: number, dto: UpdateTicketDto): Promise<Ticket> {
-    try {
-      const ticket = await this.getTicketById(id);
-      Object.assign(ticket, dto);
-      return await this.ticketRepo.save(ticket);
-    } catch (error) {
-      console.error('Error in updateTicket:', error);
-      throw error;
+  // ✅ เพิ่ม method สำหรับ update ticket ด้วย ticket_no (ที่ Controller ต้องการ)
+  async updateTicket(
+    ticket_no: string,
+    updateData: UpdateTicketDto,
+    userId: number
+  ): Promise<Ticket> {
+    const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
+    
+    const ticket = await this.ticketRepo.findOne({ 
+      where: { 
+        ticket_no: normalizedTicketNo,
+        isenabled: true 
+      } 
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`ไม่พบ Ticket No: ${normalizedTicketNo}`);
     }
+
+    // ตรวจสอบสิทธิ์ด้วย create_by
+    if (ticket.create_by !== userId) {
+      throw new ForbiddenException('You do not have permission to update this ticket');
+    }
+
+    // อัพเดตข้อมูล
+    Object.assign(ticket, updateData);
+    ticket.update_date = new Date();
+    ticket.update_by = userId;
+
+    // บันทึก status history ถ้ามีการเปลี่ยน status
+    if (updateData.status_id && updateData.status_id !== ticket.status_id) {
+      const existingHistory = await this.historyRepo.findOne({
+        where: { ticket_id: ticket.id, status_id: updateData.status_id },
+        order: { create_date: 'DESC' },
+      });
+
+      if (!existingHistory) {
+        const newHistory = this.historyRepo.create({
+          ticket_id: ticket.id,
+          status_id: updateData.status_id,
+          create_date: new Date(),
+          create_by: userId,
+        });
+        await this.historyRepo.save(newHistory);
+      }
+    }
+
+    return this.ticketRepo.save(ticket);
   }
 
   async getTicketsByUserId(userId: number) {
