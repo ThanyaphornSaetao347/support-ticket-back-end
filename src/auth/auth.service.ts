@@ -164,7 +164,7 @@ export class AuthService {
         sub: user.id,
       };
 
-      const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '30m';
+      const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '3h';
       const accessToken = this.jwtService.sign(payload);
       
       const expiresInSeconds = this.parseExpiresIn(expiresIn);
@@ -262,16 +262,6 @@ export class AuthService {
         minutesLeft: 0,
         shouldRefresh: true,
       };
-    }
-  }
-
-  // เพิ่ม method สำหรับ verify refresh token
-  async verifyRefreshToken(refreshToken: string): Promise<boolean> {
-    try {
-      const decoded = this.jwtService.verify(refreshToken);
-      return decoded.type === 'refresh';
-    } catch (error) {
-      return false;
     }
   }
 }

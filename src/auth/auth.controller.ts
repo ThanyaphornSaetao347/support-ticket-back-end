@@ -206,49 +206,4 @@ export class AuthController {
       }, HttpStatus.UNAUTHORIZED);
     }
   }
-
-  // เพิ่ม endpoint สำหรับตรวจสอบ refresh token
-  @Post('verify-refresh-token')
-  async verifyRefreshToken(@Body('refresh_token') refreshToken: string) {
-    try {
-      if (!refreshToken) {
-        throw new HttpException({
-          code: 0,
-          status: false,
-          message: 'Refresh token is required',
-          error: 'REFRESH_TOKEN_REQUIRED',
-        }, HttpStatus.BAD_REQUEST);
-      }
-
-      const isValid = await this.authService.verifyRefreshToken(refreshToken);
-      
-      if (!isValid) {
-        throw new HttpException({
-          code: 0,
-          status: false,
-          message: 'Invalid refresh token',
-          error: 'REFRESH_TOKEN_INVALID',
-        }, HttpStatus.UNAUTHORIZED);
-      }
-
-      return {
-        code: 1,
-        status: true,
-        message: 'Refresh token is valid',
-        data: {
-          isValid: true,
-        },
-      };
-    } catch (error) {
-      throw new HttpException({
-        code: 0,
-        status: false,
-        message: 'Invalid or expired refresh token',
-        error: 'REFRESH_TOKEN_INVALID',
-        data: {
-          shouldRedirectToLogin: true,
-        },
-      }, HttpStatus.UNAUTHORIZED);
-    }
-  }
 }

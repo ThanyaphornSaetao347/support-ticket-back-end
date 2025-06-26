@@ -6,13 +6,15 @@ import { TicketStatus } from './entities/ticket_status.entity';
 import { TicketStatusLanguage } from 'src/ticket_status_language/entities/ticket_status_language.entity';
 import { Ticket } from 'src/ticket/entities/ticket.entity';
 import { TicketStatusHistoryModule } from 'src/ticket_status_history/ticket_status_history.module';
+import { TicketStatusHistory } from 'src/ticket_status_history/entities/ticket_status_history.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       TicketStatus, 
       TicketStatusLanguage, 
-      Ticket
+      Ticket,
+      TicketStatusHistory
     ]),
     TicketStatusLanguage,
     TicketStatusHistoryModule

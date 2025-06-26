@@ -10,17 +10,22 @@ import {
   Request,
   Req,
   Delete,
+  Patch,
+  HttpStatus,
+  HttpException
 } from '@nestjs/common';
 import { TicketService } from './ticket.service';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
 import { AttachmentService } from 'src/ticket_attachment/ticket_attachment.service';
 import { TicketStatusService } from 'src/ticket_status/ticket_status.service';
+import { ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
 
 @Controller('api')
 export class TicketController {
   constructor(
     private readonly ticketService: TicketService,
+    private readonly ticketStatusService: TicketStatusService,
   ){}
   
   // แก้ไข saveTicket method ใน TicketController
@@ -255,6 +260,62 @@ export class TicketController {
       return {
         code: 2,
         message: error.message || 'เกิดข้อผิดพลาด',
+        data: null,
+      };
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('updateTicketStatus/:id')
+  @ApiOperation({ summary: 'Update ticket status and log history' })
+  @ApiParam({ name: 'id', description: 'Ticket ID' })
+  @ApiResponse({ status: 200, description: 'Ticket status updated successfully' })
+  @ApiResponse({ status: 404, description: 'Ticket not found' })
+  async updateTicketStatus(
+    @Param('id', ParseIntPipe) ticketId: number,
+    @Body() body: { 
+      status_id: number;
+      fix_issue_description?: string;
+      comment?: string;
+    },
+    @Request() req: any,
+  ) {
+    try {
+      console.log(`🔄 Updating ticket ${ticketId} status to ${body.status_id}`);
+
+      const userId = this.extractUserId(req);
+      if (!userId) {
+        throw new HttpException('User not authenticated properly', HttpStatus.UNAUTHORIZED);
+      }
+
+      // ✅ Validate input
+      if (!body.status_id || isNaN(body.status_id)) {
+        return {
+          code: 2,
+          message: 'status_id must be a valid number',
+          data: null,
+        };
+      }
+
+      // ✅ เปลี่ยนจาก updateTicketStatus เป็น updateTicketStatusAndHistory
+      const result = await this.ticketStatusService.updateTicketStatusAndHistory(
+        ticketId, 
+        body.status_id, 
+        userId,
+        body.fix_issue_description,
+        body.comment
+      );
+
+      return {
+        code: 1,
+        message: 'Ticket status updated successfully',
+        data: result,
+      };
+    } catch (error) {
+      console.error('💥 Error updating ticket status:', error);
+      return {
+        code: 2,
+        message: error.message || 'Failed to update ticket status',
         data: null,
       };
     }

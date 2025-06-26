@@ -260,7 +260,7 @@ export class TicketStatusService {
       }
     }
 
-    // ✅ Method หลักสำหรับอัพเดต ticket status และบันทึก history
+  // ✅ Method หลักสำหรับอัพเดต ticket status และบันทึก history
   async updateTicketStatusAndHistory(
     ticketId: number,
     newStatusId: number,
@@ -310,31 +310,40 @@ export class TicketStatusService {
 
       const updatedTicket = await queryRunner.manager.save(Ticket, ticket);
 
-      // ✅ บันทึก status history ผ่าน TicketStatusHistoryService
+      // ✅ บันทึก status history (แบบใหม่ - ไม่ใช้ service เพื่อให้แน่ใจ)
       let history: any = null;
-      if (oldStatusId !== newStatusId) {
-        // เฉพาะเมื่อ status เปลี่ยนจริงๆ
-        const historyData = {
-          ticket_id: ticketId,
-          status_id: newStatusId,
-          create_by: userId,
-          comment: comment || `Status changed from ${oldStatusId} to ${newStatusId}`,
-        };
+      
+      // ✅ สร้าง history record ใหม่เสมอ (ไม่ว่า status จะเปลี่ยนหรือไม่)
+      const historyData = {
+        ticket_id: ticketId,
+        status_id: newStatusId,
+        create_by: userId,
+        create_date: now,
+        comment: comment || (oldStatusId !== newStatusId ? 
+          `Status changed from ${oldStatusId} to ${newStatusId}` : 
+          `Status update to ${newStatusId}`),
+      };
 
-        history = await this.historyService.createHistory(historyData);
-        console.log(`✅ Status history saved: ${oldStatusId} -> ${newStatusId}`);
-      } else if (comment) {
-        // ถ้า status ไม่เปลี่ยน แต่มี comment ให้บันทึก history อยู่ดี
-        const historyData = {
-          ticket_id: ticketId,
-          status_id: newStatusId,
-          create_by: userId,
-          comment: comment,
-        };
+      // ✅ Insert โดยตรงเพื่อให้แน่ใจ
+      const historyResult = await queryRunner.manager
+        .createQueryBuilder()
+        .insert()
+        .into('ticket_status_history')
+        .values(historyData)
+        .execute();
 
-        history = await this.historyService.createHistory(historyData);
-        console.log(`✅ Comment history saved for status ${newStatusId}`);
-      }
+      console.log('✅ History inserted with ID:', historyResult.identifiers[0]);
+
+      // ✅ ดึงข้อมูล history ที่เพิ่งสร้าง
+      const savedHistory = await queryRunner.manager
+        .createQueryBuilder()
+        .select('*')
+        .from('ticket_status_history', 'tsh')
+        .where('tsh.id = :id', { id: historyResult.identifiers[0].id })
+        .getRawOne();
+
+      history = savedHistory;
+      console.log(`✅ Status history saved: ${oldStatusId} -> ${newStatusId}`);
 
       // ✅ ดึงชื่อ status สำหรับ response
       const statusName = await this.getStatusNameFromDatabase(newStatusId);
@@ -355,6 +364,82 @@ export class TicketStatusService {
       throw error;
     } finally {
       await queryRunner.release();
+    }
+  }
+
+  // ✅ เพิ่ม method สำรองสำหรับ insert history โดยตรง
+  async insertStatusHistory(
+    ticketId: number,
+    statusId: number,
+    userId: number,
+    comment?: string
+  ): Promise<any> {
+    try {
+      console.log(`📝 Inserting status history: ticket ${ticketId}, status ${statusId}`);
+
+      const historyData = {
+        ticket_id: ticketId,
+        status_id: statusId,
+        create_by: userId,
+        create_date: new Date(),
+        comment: comment || `Status updated to ${statusId}`,
+      };
+
+      // ✅ Insert โดยตรงผ่าน query builder
+      const result = await this.dataSource
+        .createQueryBuilder()
+        .insert()
+        .into('ticket_status_history')
+        .values(historyData)
+        .execute();
+
+      console.log('✅ History inserted successfully:', result.identifiers[0]);
+
+      // ✅ Return ข้อมูลที่เพิ่งสร้าง
+      const savedHistory = await this.dataSource
+        .createQueryBuilder()
+        .select('*')
+        .from('ticket_status_history', 'tsh')
+        .where('tsh.id = :id', { id: result.identifiers[0].id })
+        .getRawOne();
+
+      return savedHistory;
+
+    } catch (error) {
+      console.error('❌ Error inserting status history:', error);
+      throw error;
+    }
+  }
+
+  // ✅ Method ทางเลือกที่ใช้ Repository แบบง่าย
+  async createStatusHistoryDirect(
+    ticketId: number,
+    statusId: number,
+    userId: number,
+    comment?: string
+  ): Promise<any> {
+    try {
+      console.log(`📝 Creating status history directly`);
+
+      // ✅ ใช้ raw query เพื่อให้แน่ใจ
+      const result = await this.dataSource.query(`
+        INSERT INTO ticket_status_history (ticket_id, status_id, create_by, create_date, comment)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *
+      `, [
+        ticketId,
+        statusId,
+        userId,
+        new Date(),
+        comment || `Status updated to ${statusId}`
+      ]);
+
+      console.log('✅ History created directly:', result[0]);
+      return result[0];
+
+    } catch (error) {
+      console.error('❌ Error creating history directly:', error);
+      throw error;
     }
   }
 
