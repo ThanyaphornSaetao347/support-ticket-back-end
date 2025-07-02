@@ -19,12 +19,12 @@ import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
 export class TicketStatusController {
   constructor(private readonly statusService: TicketStatusService) {}
 
-  // @UseGuards(JwtAuthGuard)
-  // @Post('status')
-  // async status(@Body() body: { language_id?: string }) {
-  //   console.log('Controller received body:', body); // Debug log
-  //   return this.statusService.status(body?.language_id);
-  // }
+  @UseGuards(JwtAuthGuard)
+  @Post('getStatusDDL')  // Changed from 'statusDDL' to 'getStatusDDL'
+  async getStatusDDL(@Body() body: { language_id?: string }) {
+    console.log('Controller received body:', body);
+    return this.statusService.getStatusDDL(body?.language_id);
+  }
 
   @UseGuards(JwtAuthGuard)
   @Get('status')

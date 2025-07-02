@@ -12,7 +12,10 @@ import {
   Delete,
   Patch,
   HttpStatus,
-  HttpException
+  HttpException,
+  UseInterceptors,
+  UploadedFiles,
+  HttpCode
 } from '@nestjs/common';
 import { TicketService } from './ticket.service';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
@@ -20,6 +23,10 @@ import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
 import { AttachmentService } from 'src/ticket_attachment/ticket_attachment.service';
 import { TicketStatusService } from 'src/ticket_status/ticket_status.service';
 import { ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { CreateTicketAttachmentDto } from 'src/ticket_attachment/dto/create-ticket_attachment.dto';
+import { data } from 'jquery';
+import { CreateSatisfactionDto } from 'src/satisfaction/dto/create-satisfaction.dto';
 
 @Controller('api')
 export class TicketController {
@@ -197,6 +204,40 @@ export class TicketController {
         success: false,
         message: error.message
       };
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('saveSupporter/:ticket_no')
+  @UseInterceptors(FilesInterceptor('attachments'))
+  async saveSupporter(
+    @Param('ticket_no') ticketNo: string,
+    @Body() formData: any,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Request() req: any
+  ){
+    try {
+      const result = await this.ticketService.saveSupporter(
+        ticketNo,
+        formData,
+        files,
+        req.user.id
+      );
+
+      return {
+        success: true,
+        message: 'Supporter data saved successfully',
+        data: result
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Failed to save supporter data',
+          error: error.message
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
     }
   }
 
@@ -405,5 +446,38 @@ export class TicketController {
 
   private extractUserId(req: any): number {
     return req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub;
+  }
+
+  // rating from user
+  @Post('saveSatisfaction/:ticket_no')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  async saveSatisfaction(
+    @Param('ticket_no') ticketNo: string,
+    @Body() createSatisfactionDto: CreateSatisfactionDto,
+    @Request() req: any
+  ) {
+    try {
+      const result = await this.ticketService.saveSatisfaction(
+        ticketNo,
+        createSatisfactionDto,
+        req.user?.id
+      );
+      
+      return {
+        success: true,
+        message: 'บันทึกคะแนนความพึงพอใจสำเร็จ',
+        data: result
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          success: false,
+          message: 'ไม่สามารถบันทึกการประเมินได้',
+          error: error.message
+        },
+        HttpStatus.BAD_REQUEST
+      );
+    }
   }
 }

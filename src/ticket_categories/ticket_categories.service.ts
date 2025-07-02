@@ -15,7 +15,7 @@ export class TicketCategoryService {
     private readonly categoryLangRepo: Repository<TicketCategoryLanguage>
   ) {}
 
-   async getCategoriesDDL(languageId?: string) {
+  async getCategoriesDDL(languageId?: string) {
     try {
       console.log('Received languageId:', languageId); // Debug log
 

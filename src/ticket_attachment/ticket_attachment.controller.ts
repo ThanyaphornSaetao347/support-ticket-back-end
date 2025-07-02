@@ -10,7 +10,8 @@ import {
   NotFoundException,
   Request, 
   UseGuards,
-  Res
+  Res,
+  Delete
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -524,5 +525,15 @@ export class TicketAttachmentController {
       path: file.path,
       size: file.size
     };
+  }
+
+  @Delete('api/images/issue_attachment/:id')
+  @UseGuards(JwtAuthGuard)
+  async deleteAttachment(
+    @Param('id') id: number,
+    @Request() req: any
+  ) {
+    const userId = req.user?.id;
+    return this.attachmentService.deleteAttachment(Number(id), userId);
   }
 }

@@ -13,11 +13,13 @@ import { TicketStatus } from 'src/ticket_status/entities/ticket_status.entity';
 import { TicketStatusHistoryModule } from 'src/ticket_status_history/ticket_status_history.module';
 import { TicketStatusService } from 'src/ticket_status/ticket_status.service';
 import { TicketStatusModule } from 'src/ticket_status/ticket_status.module';
+import { Satisfaction } from 'src/satisfaction/entities/satisfaction.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Ticket, 
+      Ticket,
+      Satisfaction,
       TicketAttachment,
       TicketStatusHistory,
       TicketCategory,

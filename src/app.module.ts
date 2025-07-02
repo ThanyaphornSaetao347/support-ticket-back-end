@@ -26,6 +26,14 @@ import { TicketStatusLanguageModule } from './ticket_status_language/ticket_stat
 import { TicketStatusHistory } from './ticket_status_history/entities/ticket_status_history.entity';
 import { TicketStatus } from './ticket_status/entities/ticket_status.entity';
 import { TicketStatusLanguage } from './ticket_status_language/entities/ticket_status_language.entity';
+import { TicketAssignedModule } from './ticket_assigned/ticket_assigned.module';
+import { UserAllowRoleModule } from './user_allow_role/user_allow_role.module';
+import { MasterRoleModule } from './master_role/master_role.module';
+import { MasterRole } from './master_role/entities/master_role.entity';
+import { UserAllowRole } from './user_allow_role/entities/user_allow_role.entity';
+import { TicketAssigned } from './ticket_assigned/entities/ticket_assigned.entity';
+import { SatisfactionModule } from './satisfaction/satisfaction.module';
+import { Satisfaction } from './satisfaction/entities/satisfaction.entity';
 
 
 @Module({
@@ -52,7 +60,11 @@ import { TicketStatusLanguage } from './ticket_status_language/entities/ticket_s
         TicketAttachment,
         TicketStatusHistory,
         TicketStatus,
-        TicketStatusLanguage
+        TicketStatusLanguage,
+        MasterRole,
+        UserAllowRole,
+        TicketAssigned,
+        Satisfaction
       ],
       synchronize: true,
     }),
@@ -66,7 +78,11 @@ import { TicketStatusLanguage } from './ticket_status_language/entities/ticket_s
     TicketModule,
     TicketStatusHistoryModule,
     TicketStatusModule,
-    TicketStatusLanguageModule
+    TicketStatusLanguageModule,
+    UserAllowRoleModule,
+    MasterRoleModule,
+    TicketAssignedModule,
+    SatisfactionModule
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,5 +1,5 @@
 import { TicketStatusLanguage } from "src/ticket_status_language/entities/ticket_status_language.entity";
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, JoinColumn, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity({ name: 'ticket_status'})
 export class TicketStatus {

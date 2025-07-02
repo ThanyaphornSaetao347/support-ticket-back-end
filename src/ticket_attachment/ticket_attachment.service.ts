@@ -1,5 +1,5 @@
 // src/ticket_attachment/attachment.service.ts
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, Not, IsNull } from 'typeorm';
 import { TicketAttachment } from './entities/ticket_attachment.entity';
@@ -374,5 +374,37 @@ export class AttachmentService {
       console.error('Error in getDeletedAttachmentsByTicketId:', error);
       throw error;
     }
+  }
+
+  async deleteAttachment(id: number, userId: number) {
+    const attachment = await this.attachmentRepo.findOne({
+      where: { id },
+      relations: ['ticket'],
+    });
+
+    if (!attachment) {
+      throw new NotFoundException('Attachment not found');
+    }
+
+    if (attachment.ticket.create_by !== userId) {
+      throw new ForbiddenException('You do not have permission to delete this attachment');
+    }
+
+    // ลบไฟล์จริง
+    const filePath = path.join(__dirname, '..', '..', 'public', 'images', 'issue_attachment', attachment.filename);
+
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (error) {
+      console.warn('File might already be deleted or not found:', filePath);
+    }
+
+    await this.attachmentRepo.remove(attachment);
+
+    return {
+      code: 0,
+      message: 'Attachment deleted successfully',
+      data: { id },
+    };
   }
 }

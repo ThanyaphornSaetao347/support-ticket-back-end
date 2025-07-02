@@ -12,6 +12,8 @@ import { TicketStatus } from 'src/ticket_status/entities/ticket_status.entity';
 import { TicketStatusHistoryService } from 'src/ticket_status_history/ticket_status_history.service';
 import { TicketStatusLanguage } from 'src/ticket_status_language/entities/ticket_status_language.entity';
 import { CreateTicketStatusDto } from 'src/ticket_status/dto/create-ticket_status.dto';
+import { CreateSatisfactionDto } from 'src/satisfaction/dto/create-satisfaction.dto';
+import { Satisfaction } from 'src/satisfaction/entities/satisfaction.entity';
 
 @Injectable()
 export class TicketService {
@@ -29,6 +31,8 @@ export class TicketService {
     private readonly dataSource: DataSource,
     @InjectRepository(TicketStatus)
     private readonly statusRepo: Repository<TicketStatus>,
+    @InjectRepository(Satisfaction)
+    private readonly satisfactionRepo: Repository<Satisfaction>,
   ) {}
 
   async createTicket(dto: any) {
@@ -530,6 +534,343 @@ export class TicketService {
     }
   }
 
+  async saveSupporter(ticketNo: string, formData: any, files: Express.Multer.File[], currentUserId: number) {
+    const results = {};
+    
+    if (!ticketNo) {
+      throw new Error('ticket_no is required');
+    }
+
+    try {
+      // 1. Update Ticket fields พร้อมคำนวณเวลา
+      await this.updateTicketFieldsWithTimeCalculation(ticketNo, formData, currentUserId, results);
+
+      // 2. Handle Attachments
+      if (files && files.length > 0) {
+        const ticket = await this.ticketRepo.findOne({
+          where: { ticket_no: ticketNo }
+        });
+        
+        if (!ticket) {
+          throw new Error(`Ticket with ticket_no ${ticketNo} not found`);
+        }
+        
+        await this.createAttachments(files, ticket.id, currentUserId, results);
+      }
+
+      return results;
+    } catch (error) {
+      throw new Error(`Failed to save supporter data: ${error.message}`);
+    }
+  }
+
+  private async updateTicketFieldsWithTimeCalculation(ticketNo: string, formData: any, currentUserId: number, results: any) {
+    // ดึงข้อมูล ticket ปัจจุบัน
+    const currentTicket = await this.ticketRepo.findOne({
+      where: { ticket_no: ticketNo },
+      relations: ['history'] // เปลี่ยนจาก 'statusHistory' เป็น 'history'
+    });
+
+    if (!currentTicket) {
+      throw new Error(`Ticket with ticket_no ${ticketNo} not found`);
+    }
+
+    const updateData: Partial<Ticket> = {
+      update_by: currentUserId,
+      update_date: new Date()
+    };
+
+    // 1. คำนวณ estimate_time (เวลาประมาณการทำงาน)
+    if (formData.estimate_time !== undefined) {
+      updateData.estimate_time = parseInt(formData.estimate_time);
+    } else if (!currentTicket.estimate_time) {
+      // คำนวณอัตโนมัติจากประเภทงานหรือความซับซ้อน
+      updateData.estimate_time = await this.calculateEstimateTime(currentTicket);
+    }
+
+    // 2. คำนวณ due_date (วันครบกำหนด)
+    if (formData.due_date) {
+      updateData.due_date = new Date(formData.due_date);
+    } else if (!currentTicket.due_date) {
+      // คำนวณจากวันที่สร้าง + estimate_time
+      const estimateTime = updateData.estimate_time || currentTicket.estimate_time || 24;
+      updateData.due_date = this.calculateDueDate(currentTicket.create_date, estimateTime);
+    }
+
+    // 3. คำนวณ close_estimate (เวลาประมาณการปิด)
+    if (formData.close_estimate) {
+      updateData.close_estimate = new Date(formData.close_estimate);
+    } else {
+      // คำนวณจากความคืบหน้าปัจจุบัน
+      const estimateTime = updateData.estimate_time || currentTicket.estimate_time || 24;
+      updateData.close_estimate = await this.calculateCloseEstimate(currentTicket, estimateTime);
+    }
+
+    // 4. คำนวณ lead_time (เวลานำ - เวลาที่ใช้จริง)
+    if (formData.lead_time !== undefined) {
+      updateData.lead_time = parseInt(formData.lead_time);
+    } else {
+      // คำนวณจากเวลาที่ผ่านมาตั้งแต่เริ่มงาน
+      updateData.lead_time = await this.calculateLeadTime(currentTicket);
+    }
+
+    // 5. อัพเดทข้อมูลอื่นๆ
+    if (formData.fix_issue_description) {
+      updateData.fix_issue_description = formData.fix_issue_description;
+    }
+    if (formData.related_ticket_id) {
+      updateData.related_ticket_id = formData.related_ticket_id;
+    }
+
+    // คำนวณเวลาเพิ่มเติม
+    const timeMetrics = this.calculateTimeMetrics(currentTicket, updateData);
+    
+    // ไม่เพิ่ม timeMetrics ลงใน updateData เพราะไม่มี fields เหล่านี้ใน entity
+    // Object.assign(updateData, timeMetrics); // ลบบรรทัดนี้
+
+    // Update ticket
+    await this.ticketRepo.update({ ticket_no: ticketNo }, updateData);
+    
+    // Get updated ticket
+    const updatedTicket = await this.ticketRepo.findOne({
+      where: { ticket_no: ticketNo }
+    });
+    
+    if (updatedTicket) {
+      results['ticket'] = updatedTicket;
+      results['timeCalculations'] = this.getTimeCalculationSummary(currentTicket, updatedTicket, timeMetrics);
+    } else {
+      results['ticket'] = null;
+      results['timeCalculations'] = null;
+    }
+  }
+
+  // คำนวณเวลาประมาณการทำงาน
+  private async calculateEstimateTime(ticket: Ticket): Promise<number> {
+    // ดึงข้อมูลสถิติจาก tickets ที่คล้ายกัน
+    const similarTickets = await this.ticketRepo.find({
+      where: { 
+        categories_id: ticket.categories_id,
+        status_id: 3 // สมมติว่า 3 = completed
+      },
+      take: 10
+    });
+
+    if (similarTickets.length > 0) {
+      const avgTime = similarTickets.reduce((sum, t) => sum + (t.lead_time || 24), 0) / similarTickets.length;
+      return Math.round(avgTime);
+    }
+
+    // Default estimate ตามประเภท
+    const categoryEstimates = {
+      1: 8,   // Bug fix
+      2: 16,  // Feature request  
+      3: 4,   // Question/Support
+      4: 24,  // Complex issue
+    };
+
+    return categoryEstimates[ticket.categories_id] || 24;
+  }
+
+  // คำนวณวันครบกำหนด
+  private calculateDueDate(createDate: Date, estimateHours: number): Date {
+    const dueDate = new Date(createDate);
+    
+    // แปลงชั่วโมงเป็นวัน (8 ชั่วโมงทำงาน/วัน)
+    const workingDays = Math.ceil(estimateHours / 8);
+    
+    // เพิ่มวันทำการ (ข้ามวันหยุดสุดสัปดาห์)
+    let addedDays = 0;
+    while (addedDays < workingDays) {
+      dueDate.setDate(dueDate.getDate() + 1);
+      
+      // ข้ามวันเสาร์ (6) และวันอาทิตย์ (0)
+      if (dueDate.getDay() !== 0 && dueDate.getDay() !== 6) {
+        addedDays++;
+      }
+    }
+    
+    return dueDate;
+  }
+
+  // คำนวณเวลาประมาณการปิด
+  private async calculateCloseEstimate(ticket: Ticket, estimateTime: number): Promise<Date> {
+    // ดึง status history เพื่อดูความคืบหน้า
+    const statusHistory = await this.historyRepo.find({
+      where: { ticket_id: ticket.id },
+      order: { create_date: 'ASC' }
+    });
+
+    if (statusHistory.length === 0) {
+      return this.calculateDueDate(new Date(), estimateTime || 24);
+    }
+
+    // คำนวณจากเปอร์เซ็นต์ความคืบหน้า
+    const currentStatus = statusHistory[statusHistory.length - 1];
+    const progressPercentage = this.getStatusProgress(currentStatus.status_id);
+    
+    if (progressPercentage >= 90) {
+      // ใกล้เสร็จแล้ว - ประมาณ 1-2 ชั่วโมง
+      const closeEstimate = new Date();
+      closeEstimate.setHours(closeEstimate.getHours() + 2);
+      return closeEstimate;
+    }
+
+    // คำนวณจากเวลาที่เหลือ
+    const timeSpent = this.calculateTimeSpent(statusHistory);
+    const remainingTime = (estimateTime || 24) - timeSpent;
+    const closeEstimate = new Date();
+    closeEstimate.setHours(closeEstimate.getHours() + Math.max(remainingTime, 1));
+    
+    return closeEstimate;
+  }
+
+  // คำนวณเวลานำ (Lead Time)
+  private async calculateLeadTime(ticket: Ticket): Promise<number> {
+    const now = new Date();
+    const created = new Date(ticket.create_date);
+    
+    // คำนวณเวลาที่ผ่านไปเป็นชั่วโมง
+    const diffInMs = now.getTime() - created.getTime();
+    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
+    
+    // หักเวลาที่ไม่ใช่เวลาทำงาน (นอกเวลา 8:00-17:00, วันหยุดสุดสัปดาห์)
+    const workingHours = this.calculateWorkingHours(created, now);
+    
+    return Math.max(workingHours, 0);
+  }
+
+  // คำนวณชั่วโมงทำงาน (8:00-17:00, จันทร์-ศุกร์)
+  private calculateWorkingHours(startDate: Date, endDate: Date): number {
+    let workingHours = 0;
+    const current = new Date(startDate);
+    
+    while (current < endDate) {
+      const dayOfWeek = current.getDay();
+      const hour = current.getHours();
+      
+      // วันจันทร์-ศุกร์ (1-5) และเวลา 8:00-17:00
+      if (dayOfWeek >= 1 && dayOfWeek <= 5 && hour >= 8 && hour < 17) {
+        workingHours++;
+      }
+      
+      current.setHours(current.getHours() + 1);
+    }
+    
+    return workingHours;
+  }
+
+  // คำนวณเปอร์เซ็นต์ความคืบหน้าตาม status
+  private getStatusProgress(statusId: number): number {
+    const statusProgress = {
+      1: 0,   // Open
+      2: 25,  // In Progress
+      3: 50,  // Investigation
+      4: 75,  // Testing
+      5: 90,  // Ready to Close
+      6: 100, // Closed
+    };
+    
+    return statusProgress[statusId] || 0;
+  }
+
+  // คำนวณเวลาที่ใช้ไปแล้ว
+  private calculateTimeSpent(statusHistory: any[]): number {
+    if (statusHistory.length < 2) return 0;
+    
+    let timeSpent = 0;
+    
+    for (let i = 1; i < statusHistory.length; i++) {
+      const current = new Date(statusHistory[i].create_date);
+      const previous = new Date(statusHistory[i - 1].create_date);
+      
+      const diffInMs = current.getTime() - previous.getTime();
+      const diffInHours = diffInMs / (1000 * 60 * 60);
+      
+      // เฉพาะช่วงที่ทำงาน
+      const workingHours = this.calculateWorkingHours(previous, current);
+      timeSpent += workingHours;
+    }
+    
+    return timeSpent;
+  }
+
+  // คำนวณเมตริกต์เวลาเพิ่มเติม (ไม่บันทึกลง database)
+  private calculateTimeMetrics(currentTicket: Ticket, updateData: any) {
+    const metrics: any = {};
+    
+    // SLA compliance
+    if (updateData.due_date && updateData.close_estimate) {
+      const dueDate = new Date(updateData.due_date);
+      const closeEstimate = new Date(updateData.close_estimate);
+      metrics.sla_status = closeEstimate <= dueDate ? 'On Track' : 'At Risk';
+    }
+    
+    // Utilization rate
+    if (updateData.estimate_time && updateData.lead_time) {
+      const utilization = (updateData.estimate_time / updateData.lead_time) * 100;
+      metrics.utilization_rate = Math.round(utilization);
+    }
+    
+    // Priority adjustment based on time
+    if (updateData.lead_time && updateData.estimate_time) {
+      const timeRatio = updateData.lead_time / updateData.estimate_time;
+      if (timeRatio > 1.5) {
+        metrics.priority_adjustment = 'High';
+      } else if (timeRatio > 1.2) {
+        metrics.priority_adjustment = 'Medium';
+      } else {
+        metrics.priority_adjustment = 'Normal';
+      }
+    }
+    
+    return metrics;
+  }
+
+  // สรุปการคำนวณเวลา
+  private getTimeCalculationSummary(originalTicket: Ticket, updatedTicket: Ticket, timeMetrics: any) {
+    return {
+      original: {
+        estimate_time: originalTicket.estimate_time,
+        lead_time: originalTicket.lead_time,
+        due_date: originalTicket.due_date,
+        close_estimate: originalTicket.close_estimate,
+      },
+      updated: {
+        estimate_time: updatedTicket.estimate_time,
+        lead_time: updatedTicket.lead_time,
+        due_date: updatedTicket.due_date,
+        close_estimate: updatedTicket.close_estimate,
+      },
+      calculations: {
+        time_variance: (updatedTicket.lead_time || 0) - (updatedTicket.estimate_time || 0),
+        sla_status: timeMetrics.sla_status || null,
+        utilization_rate: timeMetrics.utilization_rate || null,
+        priority_adjustment: timeMetrics.priority_adjustment || null,
+      }
+    };
+  }
+
+  private async createAttachments(files: Express.Multer.File[], ticketId: number, currentUserId: number, result: any) {
+    const attachments:TicketAttachment[] = [];
+
+    for (const file of files) {
+      const attachmentData = {
+        id: ticketId,
+        type: 'supporter',
+        extension: file.originalname.split('.').pop(),
+        filename: file.filename || file.originalname,
+        create_by: currentUserId,
+        update_by: currentUserId
+      };
+
+      const attachment = await this.attachmentRepo.save(attachmentData);
+      attachments.push(attachment);
+    }
+
+    result['attachments'] = attachments;
+  }
+
   // ✅ เพิ่ม method สำหรับ update ticket ด้วย ticket_no (ที่ Controller ต้องการ)
   async updateTicket(
     ticket_no: string,
@@ -646,5 +987,55 @@ export class TicketService {
         error: error.message
       };
     }
+  }
+
+  async saveSatisfaction(
+    ticketNo: string,
+    createSatisfactionDto: CreateSatisfactionDto,
+    currentUserId: number
+  ) {
+    // find ticket from ticket_no
+    const ticket = await this.ticketRepo.findOne({
+      where: { ticket_no: ticketNo }
+    });
+
+    if (!ticket) {
+      throw new Error(`ไม่พบ ticket หมายเลข ${ticketNo}`);
+    }
+
+    // check ticket it close?
+    if (ticket.status_id !== 4) {
+      throw new Error('สามารถประเมินความพึงพอใจได้เฉพาะ ticket ที่เสร็จสิ้นแล้วเท่านั้น')
+    }
+
+    // ตรวจสอบว่าประเมิฯหรือยัง
+    const existingSatisfaction = await this.satisfactionRepo.findOne({
+      where: { ticket_id: ticket.id }
+    });
+
+    if (existingSatisfaction) {
+      throw new Error('Ticket นี้ได้รับการประเมินความพึงพอใจแล้ว');
+    }
+
+    // บันทึกการประเมิน
+    const satisfactionData = {
+      ticket_id: ticket.id,
+      rating: createSatisfactionDto.rating,
+      create_by: currentUserId,
+      create_date: new Date()
+    };
+
+    const satisfaction = await this.satisfactionRepo.save(satisfactionData);
+
+    return {
+      ticket_no: ticketNo,
+      ticket_id: ticket.id,
+      satisfaction: {
+        id: satisfaction.id,
+        rating: satisfaction.rating,
+        create_by: satisfaction.create_by,
+        create_date: satisfaction.create_date
+      }
+    };
   }
 }

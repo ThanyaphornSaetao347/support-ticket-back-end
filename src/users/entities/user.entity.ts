@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne } from "typeorm";
 import { CustomerForProject } from "src/customer_for_project/entities/customer-for-project.entity";
+import { MasterRole } from "src/master_role/entities/master_role.entity";
 
 @Entity({name: 'users'})
 export class Users {
@@ -48,4 +49,7 @@ export class Users {
   // users/entities/user.entity.ts (เพิ่ม relation)
   @OneToMany(() => CustomerForProject, customerProject => customerProject.users)
   customerProjects: CustomerForProject[];
+
+  @ManyToOne(() => MasterRole, masterRole => masterRole.userAllowRole)
+  role: MasterRole;
 }

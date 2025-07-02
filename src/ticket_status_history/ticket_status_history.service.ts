@@ -43,11 +43,22 @@ export class TicketStatusHistoryService {
     }
   }
 
-  // ✅ ดึง history ของ ticket
+  // ✅ ดึง history ของ ticket โดยใช้ ticket_id โดยตรง
   async getTicketHistory(ticketId: number): Promise<TicketStatusHistory[]> {
     try {
+      // ตรวจสอบว่า ticket มีอยู่จริง
+      const ticket = await this.historyRepo.findOne({
+        where: { id: ticketId } // ใช้ id แทน ticket_id
+      });
+
+      if (!ticket) {
+        throw new Error(`Ticket with id ${ticketId} not found`);
+      }
+
+      // ดึง history โดยใช้ ticket_id
       return await this.historyRepo.find({
         where: { ticket_id: ticketId },
+        relations: ['status', 'status.statusLang'], // เพิ่ม relations เพื่อดึงข้อมูล status
         order: { create_date: 'DESC' }
       });
     } catch (error) {

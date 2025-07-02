@@ -23,6 +23,30 @@ import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
 export class TicketStatusHistoryController {
   constructor(private readonly ticketStatusHistoryService: TicketStatusHistoryService) {}
 
+  @Post('getTicketHistory/:id')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK) // เปลี่ยนจาก CREATED เป็น OK สำหรับการดึงข้อมูล
+  async getTicketHistory(
+    @Body() body: { ticket_id: number }, // รับ ticket_id จาก body
+    @Request() req: any
+  ) {
+    try {
+      const history = await this.ticketStatusHistoryService.getTicketHistory(body.ticket_id);
+      
+      return {
+        success: true,
+        message: 'Ticket history retrieved successfully',
+        data: history
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to get ticket history',
+        error: error.message
+      };
+    }
+  }
+
   // ✅ POST - บันทึก status change (แก้ไขแล้ว)
   @Post('history/:ticketId')
   @UseGuards(JwtAuthGuard)

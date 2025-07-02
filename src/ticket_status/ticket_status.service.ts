@@ -22,6 +22,49 @@ export class TicketStatusService {
     private dataSource: DataSource,
   ){}
 
+  async getStatusDDL(languageId?: string) {
+    try {
+      console.log('Received languageId:', languageId);
+
+      // ใช้ raw SQL query แทน relation
+      let queryBuilder = this.statusLangRepo
+        .createQueryBuilder('tsl')
+        .innerJoin('ticket_status', 'ts', 'ts.id = tsl.status_id'); // แก้ JOIN condition
+      
+      if (languageId && languageId.trim() !== '') {
+        queryBuilder = queryBuilder.where('tsl.language_id = :languageId', { 
+          languageId: languageId.trim() 
+        });
+      }
+
+      const results = await queryBuilder
+        .select([
+          'ts.id as ts_id', 
+          'tsl.name as tsl_name',
+          'tsl.language_id as tsl_language_id'
+        ])
+        .getRawMany();
+
+      console.log('Fixed Query results:', results);
+
+      return {
+        code: 1,
+        message: 'Success',
+        data: results.map(row => ({
+          id: row.ts_id,
+          name: row.tsl_name,
+          language_id: row.tsl_language_id,
+        })),
+      };
+    } catch (error) {
+      console.error('Error in getStatusDDL:', error);
+      return {
+        code: 0,
+        message: 'Failed to fetch statuses',
+        error: error.message,
+      };
+    }
+  }
 
   async createStatus(creaateStatusDto: CreateTicketStatusDto) {
       try {
