@@ -75,4 +75,16 @@ export class Ticket {
 
   @OneToOne(() => Satisfaction, satisfaction => satisfaction.ticket)
   satisfaction: Satisfaction;
+
+  @ManyToOne(() => Project, project => project.ticket)
+  @JoinColumn({ name: 'project_id' }) // ถ้ามี field นี้
+  project: Project;
+
+  @ManyToOne(() => TicketCategory, category => category.ticket)
+  @JoinColumn({ name: 'categories_id'})
+  categories: TicketCategory
+
+  @ManyToOne(() => TicketStatus, status => status.ticket)
+  @JoinColumn({ name: 'status_id'})
+  status: TicketStatus;
 }

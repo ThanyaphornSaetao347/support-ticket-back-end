@@ -66,7 +66,7 @@ import { Satisfaction } from './satisfaction/entities/satisfaction.entity';
         TicketAssigned,
         Satisfaction
       ],
-      synchronize: true,
+      synchronize: false,
     }),
     AuthModule,
     UserModule,

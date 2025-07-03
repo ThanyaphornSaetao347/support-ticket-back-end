@@ -1,4 +1,5 @@
 import { CustomerForProject } from "src/customer_for_project/entities/customer-for-project.entity";
+import { Ticket } from "src/ticket/entities/ticket.entity";
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm";
 
 @Entity({ name: 'project'})
@@ -20,4 +21,7 @@ export class Project {
 
     @OneToMany(() => CustomerForProject, customerProject => customerProject.project)
     customerProjects: CustomerForProject[];
+
+    @OneToMany(() => Ticket, ticket => ticket.project)
+    ticket: Ticket;
 }

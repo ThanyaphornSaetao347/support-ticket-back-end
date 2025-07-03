@@ -136,7 +136,7 @@ export class TicketStatusService {
   
         return {
           code: 1,
-          message: 'Category created successfully',
+          message: 'Status created successfully',
           data: {
             id: savedStatus.id,
             create_by: savedStatus.create_by,
@@ -583,4 +583,50 @@ export class TicketStatusService {
       return [];
     }
   }
+
+  // ✅ เพิ่มใน TicketStatusService
+
+// 1️⃣ ดึง status ของ ticket เดี่ยว
+  async getTicketStatusWithName(
+    ticketId: number, 
+    languageId: string = 'th'
+  ): Promise<{
+    ticket_id: number;
+    status_id: number;
+    status_name: string;
+    language_id: string;
+  } | null> {
+    try {
+      console.log(`🎫 Getting status for ticket ${ticketId}, language: ${languageId}`);
+
+      const result = await this.dataSource
+        .createQueryBuilder()
+        .select([
+          't.id AS ticket_id',
+          't.status_id AS status_id',
+          'COALESCE(tsl.name, CONCAT(\'Status \', t.status_id)) AS status_name',
+          'COALESCE(tsl.language_id, :defaultLang) AS language_id'
+        ])
+        .from('ticket', 't')
+        .leftJoin('ticket_status', 'ts', 'ts.id = t.status_id AND ts.isenabled = true')
+        .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = t.status_id AND tsl.language_id = :lang')
+        .where('t.id = :ticketId', { ticketId })
+        .andWhere('t.isenabled = true')
+        .setParameter('lang', languageId)
+        .setParameter('defaultLang', languageId)
+        .getRawOne();
+
+      if (!result) {
+        console.log(`❌ Ticket ${ticketId} not found`);
+        return null;
+      }
+
+      console.log(`✅ Found ticket status:`, result);
+      return result;
+
+    } catch (error) {
+      console.error('❌ Error getting ticket status:', error);
+      return null;
+    }
   }
+}

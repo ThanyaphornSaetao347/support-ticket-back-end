@@ -1,4 +1,5 @@
 import { Ticket } from "src/ticket/entities/ticket.entity";
+import { TicketStatus } from "src/ticket_status/entities/ticket_status.entity";
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity({ name: 'ticket_status_history'})
@@ -21,5 +22,9 @@ export class TicketStatusHistory {
     @ManyToOne(() => Ticket, ticket => ticket.history)
     @JoinColumn({ name : 'ticket_id' })
     ticket: Ticket;
+
+    @ManyToOne(() => TicketStatus, status => status.history)
+    @JoinColumn({ name: 'status_id'})
+    status: TicketStatus;
 }
 

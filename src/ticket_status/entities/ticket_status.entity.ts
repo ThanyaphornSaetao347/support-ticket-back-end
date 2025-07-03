@@ -1,3 +1,5 @@
+import { Ticket } from "src/ticket/entities/ticket.entity";
+import { TicketStatusHistory } from "src/ticket_status_history/entities/ticket_status_history.entity";
 import { TicketStatusLanguage } from "src/ticket_status_language/entities/ticket_status_language.entity";
 import { Column, Entity, JoinColumn, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 
@@ -17,4 +19,10 @@ export class TicketStatus {
 
     @OneToMany(() => TicketStatusLanguage, language => language.status)
     language: TicketStatusLanguage[];
+
+    @OneToMany(() => Ticket, ticket => ticket.status)
+    ticket: Ticket[];
+
+    @OneToMany(() => TicketStatusHistory, history => history.status)
+    history: TicketStatusHistory[];
 }

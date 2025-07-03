@@ -35,6 +35,64 @@ export class TicketService {
     private readonly satisfactionRepo: Repository<Satisfaction>,
   ) {}
 
+  // ✅ แก้ไข checkTicketOwnership สำหรับ PostgreSQL
+  async checkTicketOwnership(userId: number, ticketId: number): Promise<any[]> {
+    try {
+      console.log(`🔍 Checking ownership: ticket ${ticketId}, user ${userId}`);
+      
+      // ตรวจสอบ parameters
+      if (!userId || !ticketId) {
+        console.log(`❌ Invalid parameters: userId=${userId}, ticketId=${ticketId}`);
+        return [];
+      }
+
+      // ✅ ใช้ PostgreSQL syntax ($1, $2) และ create_by
+      const query = `
+        SELECT id, ticket_no, create_by, created_at
+        FROM ticket t
+        WHERE t.id = $1 AND t.create_by = $2 AND t.isenabled = true
+      `;
+      
+      const result = await this.dataSource.query(query, [ticketId, userId]);
+      console.log(`✅ Ownership check result: found ${result.length} records`);
+      
+      return result || [];
+    } catch (error) {
+      console.error('💥 Error checking ticket ownership:', error);
+      console.error('Query parameters:', { ticketId, userId });
+      return [];
+    }
+  }
+
+  // ✅ แก้ไข checkTicketOwnershipByNo สำหรับ PostgreSQL
+  async checkTicketOwnershipByNo(userId: number, ticketNo: string): Promise<any[]> {
+    try {
+      console.log(`🔍 Checking ownership: ticket ${ticketNo}, user ${userId}`);
+      
+      // ตรวจสอบ parameters
+      if (!userId || !ticketNo) {
+        console.log(`❌ Invalid parameters: userId=${userId}, ticketNo=${ticketNo}`);
+        return [];
+      }
+
+      // ✅ ใช้ PostgreSQL syntax ($1, $2) และ create_by
+      const query = `
+        SELECT id, ticket_no, create_by, created_at
+        FROM ticket t
+        WHERE t.ticket_no = $1 AND t.create_by = $2 AND t.isenabled = true
+      `;
+      
+      const result = await this.dataSource.query(query, [ticketNo, userId]);
+      console.log(`✅ Ownership check result: found ${result.length} records`);
+      
+      return result || [];
+    } catch (error) {
+      console.error('💥 Error checking ticket ownership by no:', error);
+      console.error('Query parameters:', { ticketNo, userId });
+      return [];
+    }
+  }
+
   async createTicket(dto: any) {
     try {
       if (!dto.create_by || isNaN(dto.create_by)) {
@@ -988,6 +1046,22 @@ export class TicketService {
       };
     }
   }
+  // get ตั๋วทั้งหมด (admin)
+  async getAllTicketWithoutFilter() {
+    return this.ticketRepo.find({
+      order: { create_date: 'DESC' },
+      relations: ['project', 'categories', 'status'],
+    });
+  }
+
+  // get เฉพาะตั๋วของตัวเอง
+  async getTicketsByCreator(userId: number) {
+    return this.ticketRepo.find({
+      where: { create_by: userId },
+      order: { create_date: 'DESC' },
+      relations: ['project', 'categories', 'status'],
+    });
+  }
 
   async saveSatisfaction(
     ticketNo: string,
@@ -1037,5 +1111,84 @@ export class TicketService {
         create_date: satisfaction.create_date
       }
     };
+  }
+
+  // เพิ่ม method นี้
+  async checkUserPermissions(userId: number): Promise<number[]> {
+    const rows = await this.dataSource.query(
+      'SELECT role_id FROM users_allow_role WHERE user_id = $1',
+      [userId]
+    );
+    // rows = [{ role_id: 1 }, { role_id: 2 }, ...]
+    const roleIds = rows.map(r => r.role_id);
+    return roleIds;
+  }
+
+  // เพิ่ม method นี้
+  async getUserPermissionsWithNames(userId: number) {
+    const query = `
+      SELECT mr.id, mr.name
+      FROM master_role mr
+      WHERE mr.id IN (
+        SELECT (jsonb_array_elements_text(role_id))::int
+        FROM users_allow_role
+        WHERE user_id = $1
+      )
+    `;
+    return await this.dataSource.query(query, [userId]);
+  }
+
+  // ✅ ปรับปรุง getTicketStatusWithName
+  async getTicketStatusWithName(
+    ticketId: number,
+    languageId: string = 'th'
+  ): Promise<{
+    ticket_id: number;
+    status_id: number;
+    status_name: string;
+    language_id: string;
+    ticket_no?: string;
+    created_at?: Date;
+    updated_at?: Date;
+  } | null> {
+    try {
+      console.log(`🎫 Getting status for ticket ${ticketId}, language: ${languageId}`);
+
+      const result = await this.dataSource
+        .createQueryBuilder()
+        .select([
+          't.id AS ticket_id',
+          't.ticket_no AS ticket_no',
+          't.status_id AS status_id',
+          't.created_at AS created_at',
+          't.updated_at AS updated_at',
+          'COALESCE(tsl.name, ts.name, CONCAT(\'Status \', t.status_id)) AS status_name',
+          'COALESCE(tsl.language_id, :defaultLang) AS language_id'
+        ])
+        .from('ticket', 't')
+        .leftJoin('ticket_status', 'ts', 'ts.id = t.status_id AND ts.isenabled = true')
+        .leftJoin(
+          'ticket_status_language', 
+          'tsl', 
+          'tsl.status_id = t.status_id AND tsl.language_id = :lang'
+        )
+        .where('t.id = :ticketId', { ticketId })
+        .andWhere('t.isenabled = true')
+        .setParameter('lang', languageId)
+        .setParameter('defaultLang', languageId)
+        .getRawOne();
+
+      if (!result) {
+        console.log(`❌ Ticket ${ticketId} not found`);
+        return null;
+      }
+
+      console.log(`✅ Found ticket status:`, result);
+      return result;
+      
+    } catch (error) {
+      console.error('💥 Error getting ticket status:', error);
+      return null;
+    }
   }
 }
