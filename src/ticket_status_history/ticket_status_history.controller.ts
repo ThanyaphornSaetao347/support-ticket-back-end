@@ -23,25 +23,29 @@ import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
 export class TicketStatusHistoryController {
   constructor(private readonly ticketStatusHistoryService: TicketStatusHistoryService) {}
 
-  @Post('getTicketHistory/:id')
+  @Get('ticket/:ticketId/current-status')
   @UseGuards(JwtAuthGuard)
-  @HttpCode(HttpStatus.OK) // เปลี่ยนจาก CREATED เป็น OK สำหรับการดึงข้อมูล
-  async getTicketHistory(
-    @Body() body: { ticket_id: number }, // รับ ticket_id จาก body
+  async getCurrentStatus(
+    @Param('ticketId', ParseIntPipe) ticketId: number,
     @Request() req: any
   ) {
     try {
-      const history = await this.ticketStatusHistoryService.getTicketHistory(body.ticket_id);
+      const currentStatus = await this.ticketStatusHistoryService.getCurrentTicketStatus(ticketId);
+      
+      if (!currentStatus) {
+        throw new NotFoundException(`Ticket ${ticketId} not found`);
+      }
       
       return {
         success: true,
-        message: 'Ticket history retrieved successfully',
-        data: history
+        message: 'Current status retrieved',
+        data: currentStatus
       };
     } catch (error) {
+      console.error('💥 Error getting current status:', error);
       return {
         success: false,
-        message: 'Failed to get ticket history',
+        message: 'Failed to get current status',
         error: error.message
       };
     }

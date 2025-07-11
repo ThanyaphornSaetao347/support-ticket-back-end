@@ -1,16 +1,25 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CreateTicketStatusHistoryDto } from './dto/create-ticket_status_history.dto';
 import { UpdateTicketStatusHistoryDto } from './dto/update-ticket_status_history.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { TicketStatusHistory } from './entities/ticket_status_history.entity';
-import { Repository } from 'typeorm';
+import { Ticket } from 'src/ticket/entities/ticket.entity'; // ✅ เพิ่ม import
+import { Repository, DataSource } from 'typeorm';
 
 @Injectable()
 export class TicketStatusHistoryService {
   constructor(
     @InjectRepository(TicketStatusHistory)
     private readonly historyRepo: Repository<TicketStatusHistory>,
+    
+    // ✅ เพิ่ม Ticket repository
+    @InjectRepository(Ticket)
+    private readonly ticketRepo: Repository<Ticket>,
+    
+    // ✅ เพิ่ม DataSource สำหรับ query ที่ซับซ้อน
+    private readonly dataSource: DataSource,
   ){}
+
   // ✅ บันทึก history entry ใหม่ (แก้ไขแล้ว)
   async createHistory(createData: {
     ticket_id: number;
@@ -23,6 +32,15 @@ export class TicketStatusHistoryService {
       // ✅ Validate required fields
       if (!createData.ticket_id || !createData.status_id || !createData.create_by) {
         throw new BadRequestException('ticket_id, status_id, and create_by are required');
+      }
+
+      // ✅ ตรวจสอบว่า ticket มีอยู่จริง (ใช้ ticketRepo)
+      const ticket = await this.ticketRepo.findOne({
+        where: { id: createData.ticket_id, isenabled: true }
+      });
+
+      if (!ticket) {
+        throw new NotFoundException(`Ticket with ID ${createData.ticket_id} not found`);
       }
 
       // ✅ สร้าง entity โดยไม่ส่ง create_date (ให้ @CreateDateColumn จัดการ)
@@ -43,46 +61,237 @@ export class TicketStatusHistoryService {
     }
   }
 
-  // ✅ ดึง history ของ ticket โดยใช้ ticket_id โดยตรง
-  async getTicketHistory(ticketId: number): Promise<TicketStatusHistory[]> {
+  // ✅ ดึง history ของ ticket โดยใช้ ticket_id โดยตรง (แก้ไขแล้ว)
+  async getTicketHistory(ticketId: number): Promise<any[]> {
     try {
-      // ตรวจสอบว่า ticket มีอยู่จริง
-      const ticket = await this.historyRepo.findOne({
-        where: { id: ticketId } // ใช้ id แทน ticket_id
+      console.log(`📋 Getting history for ticket ID: ${ticketId}`);
+
+      // ✅ ตรวจสอบว่า ticket มีอยู่จริง (ใช้ ticketRepo ที่ถูกต้อง)
+      const ticket = await this.ticketRepo.findOne({
+        where: { id: ticketId, isenabled: true }
       });
 
       if (!ticket) {
-        throw new Error(`Ticket with id ${ticketId} not found`);
+        throw new NotFoundException(`Ticket with ID ${ticketId} not found`);
       }
 
-      // ดึง history โดยใช้ ticket_id
-      return await this.historyRepo.find({
-        where: { ticket_id: ticketId },
-        relations: ['status', 'status.language'], // เพิ่ม relations เพื่อดึงข้อมูล status
-        order: { create_date: 'DESC' }
-      });
+      console.log(`✅ Ticket found: ${ticket.ticket_no}`);
+
+      // ✅ ดึง history โดยใช้ raw query เพื่อให้ได้ข้อมูลครบถ้วน
+      const history = await this.dataSource.query(`
+        SELECT 
+          tsh.id,
+          tsh.ticket_id,
+          tsh.status_id,
+          tsh.create_by,
+          tsh.create_date,
+          COALESCE(tsl.name, CONCAT('Status ', tsh.status_id)) as status_name,
+          CONCAT(u.firstname, ' ', u.lastname) as created_by_name
+        FROM ticket_status_history tsh
+        LEFT JOIN ticket_status ts ON ts.id = tsh.status_id AND ts.isenabled = true
+        LEFT JOIN ticket_status_language tsl ON tsl.status_id = tsh.status_id AND tsl.language_id = 'th'
+        LEFT JOIN users u ON u.id = tsh.create_by
+        WHERE tsh.ticket_id = $1
+        ORDER BY tsh.create_date DESC
+      `, [ticketId]);
+
+      console.log(`✅ Found ${history.length} history records`);
+      return history;
+
     } catch (error) {
       console.error('💥 Error getting ticket history:', error);
       throw error;
     }
   }
 
+  // ✅ เพิ่ม method ใหม่สำหรับดึง current status ของ ticket
+  async getCurrentTicketStatus(ticketId: number): Promise<{
+    ticket_id: number;
+    current_status_id: number;
+    current_status_name: string;
+    last_updated: Date;
+  } | null> {
+    try {
+      const result = await this.dataSource.query(`
+        SELECT 
+        tsh.id,
+        tsh.ticket_id,
+        tsh.status_id,
+        tsh.create_by,
+        tsh.create_date,
+        tsh.comment,
+        COALESCE(tsl.name, CONCAT('Status ', tsh.status_id)) as status_name,
+        CONCAT(COALESCE(u.firstname, ''), ' ', COALESCE(u.lastname, '')) as created_by_name,
+        u.email as created_by_email
+      FROM ticket_status_history tsh
+      LEFT JOIN ticket_status_language tsl ON tsl.status_id = tsh.status_id AND tsl.language_id = 'th'
+      LEFT JOIN users u ON u.id = tsh.create_by
+      WHERE tsh.ticket_id = $1
+      ORDER BY tsh.create_date ASC
+    `, [ticketId]);
+
+      return result.length > 0 ? result[0] : null;
+    } catch (error) {
+      console.error('Error getting current ticket status:', error);
+      return null;
+    }
+  }
+
+  // ✅ เพิ่ม method สำหรับ debug การเปลี่ยนสถานะ
+  async debugStatusChange(ticketId: number): Promise<{
+    current_ticket_status: any;
+    recent_history: any[];
+    status_mismatch: boolean;
+  }> {
+    try {
+      console.log(`🔍 Debug status change for ticket ${ticketId}`);
+
+      // ดึงสถานะปัจจุบันของ ticket
+      const currentStatus = await this.getCurrentTicketStatus(ticketId);
+      
+      // ดึง history ล่าสุด 5 รายการ
+      const recentHistory = await this.dataSource.query(`
+        SELECT 
+          tsh.id,
+          tsh.status_id,
+          tsh.create_date,
+          COALESCE(tsl.name, CONCAT('Status ', tsh.status_id)) as status_name
+        FROM ticket_status_history tsh
+        LEFT JOIN ticket_status_language tsl ON tsl.status_id = tsh.status_id AND tsl.language_id = 'th'
+        WHERE tsh.ticket_id = $1
+        ORDER BY tsh.create_date DESC
+        LIMIT 5
+      `, [ticketId]);
+
+      // ตรวจสอบว่าสถานะใน ticket table ตรงกับ history ล่าสุดหรือไม่
+      const latestHistoryStatus = recentHistory.length > 0 ? recentHistory[0].status_id : null;
+      const statusMismatch = currentStatus && latestHistoryStatus && 
+                           currentStatus.current_status_id !== latestHistoryStatus;
+
+      const debugInfo = {
+        current_ticket_status: currentStatus,
+        recent_history: recentHistory,
+        status_mismatch: statusMismatch
+      };
+
+      console.log('🔍 Debug info:', debugInfo);
+      return debugInfo;
+
+    } catch (error) {
+      console.error('Error in debug status change:', error);
+      throw error;
+    }
+  }
+
+  // ✅ เพิ่ม method สำหรับซิงค์สถานะ
+  async syncTicketStatus(ticketId: number): Promise<{
+    success: boolean;
+    message: string;
+    old_status: number;
+    new_status: number;
+  }> {
+    try {
+      console.log(`🔄 Syncing status for ticket ${ticketId}`);
+
+      // ดึงสถานะล่าสุดจาก history
+      const latestHistory = await this.dataSource.query(`
+        SELECT status_id, create_date
+        FROM ticket_status_history
+        WHERE ticket_id = $1
+        ORDER BY create_date DESC
+        LIMIT 1
+      `, [ticketId]);
+
+      if (latestHistory.length === 0) {
+        return {
+          success: false,
+          message: 'No history found for this ticket',
+          old_status: 0,
+          new_status: 0
+        };
+      }
+
+      const latestStatusId = latestHistory[0].status_id;
+
+      // ดึงสถานะปัจจุบันจาก ticket table
+      const currentTicket = await this.ticketRepo.findOne({
+        where: { id: ticketId }
+      });
+
+      if (!currentTicket) {
+        return {
+          success: false,
+          message: 'Ticket not found',
+          old_status: 0,
+          new_status: 0
+        };
+      }
+
+      const oldStatus = currentTicket.status_id;
+
+      // อัปเดตสถานะใน ticket table ให้ตรงกับ history ล่าสุด
+      if (oldStatus !== latestStatusId) {
+        await this.ticketRepo.update(ticketId, {
+          status_id: latestStatusId,
+          update_date: new Date()
+        });
+
+        console.log(`✅ Synced ticket ${ticketId}: ${oldStatus} -> ${latestStatusId}`);
+
+        return {
+          success: true,
+          message: 'Status synced successfully',
+          old_status: oldStatus,
+          new_status: latestStatusId
+        };
+      } else {
+        return {
+          success: true,
+          message: 'Status already in sync',
+          old_status: oldStatus,
+          new_status: latestStatusId
+        };
+      }
+
+    } catch (error) {
+      console.error('Error syncing ticket status:', error);
+      throw error;
+    }
+  }
+
   // Helper methods เหมือนเดิม...
   async getStatusName(statusId: number): Promise<string> {
-    const statusMap = {
-      1: 'Create',
-      2: 'Open Ticket', 
-      3: 'In Progress',
-      4: 'completed',
-      5: 'Cancel',
-      6: 'Cancelled'
-    };
-    
-    return statusMap[statusId] || `Status ${statusId}`;
+    try {
+      // ✅ ดึงชื่อสถานะจาก database แทนการ hardcode
+      const result = await this.dataSource.query(`
+        SELECT COALESCE(tsl.name, ts.name, CONCAT('Status ', $1)) as name
+        FROM ticket_status ts
+        LEFT JOIN ticket_status_language tsl ON tsl.status_id = ts.id AND tsl.language_id = 'th'
+        WHERE ts.id = $1 AND ts.isenabled = true
+        LIMIT 1
+      `, [statusId]);
+
+      return result.length > 0 ? result[0].name : `Status ${statusId}`;
+    } catch (error) {
+      console.error('Error getting status name:', error);
+      return `Status ${statusId}`;
+    }
   }
 
   async getUserName(userId: number): Promise<string> {
-    return `User ${userId}`; // Placeholder
+    try {
+      const result = await this.dataSource.query(`
+        SELECT CONCAT(firstname, ' ', lastname) as name
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `, [userId]);
+
+      return result.length > 0 ? result[0].name : `User ${userId}`;
+    } catch (error) {
+      console.error('Error getting user name:', error);
+      return `User ${userId}`;
+    }
   }
 
   async validateStatus(statusId: number, statusName: string): Promise<boolean> {

@@ -34,6 +34,7 @@ import { UserAllowRole } from './user_allow_role/entities/user_allow_role.entity
 import { TicketAssigned } from './ticket_assigned/entities/ticket_assigned.entity';
 import { SatisfactionModule } from './satisfaction/satisfaction.module';
 import { Satisfaction } from './satisfaction/entities/satisfaction.entity';
+// import { NotificationModule } from './notification/notification.module';
 
 
 @Module({
@@ -66,7 +67,6 @@ import { Satisfaction } from './satisfaction/entities/satisfaction.entity';
         TicketAssigned,
         Satisfaction
       ],
-      synchronize: false,
     }),
     AuthModule,
     UserModule,
@@ -82,7 +82,8 @@ import { Satisfaction } from './satisfaction/entities/satisfaction.entity';
     UserAllowRoleModule,
     MasterRoleModule,
     TicketAssignedModule,
-    SatisfactionModule
+    SatisfactionModule,
+    // NotificationModule
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -415,77 +415,164 @@ export class TicketService {
     }
   }
 
-  // ✅ เพิ่ม method สำหรับ soft delete ticket ด้วย ticket_no
+  // ✅ แก้ไข softDeleteTicket method ถ้า entity ไม่มี deleted_at field
+
   async softDeleteTicket(ticket_no: string, userId: number): Promise<void> {
-    const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
-    
-    const ticket = await this.ticketRepo.findOne({ 
-      where: { 
-        ticket_no: normalizedTicketNo,
-        isenabled: true 
-      } 
-    });
+    try {
+      console.log(`🗑️ Soft deleting ticket: ${ticket_no} by user: ${userId}`);
+      
+      const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
+      console.log(`📝 Normalized ticket_no: ${normalizedTicketNo}`);
+      
+      const ticket = await this.ticketRepo.findOne({ 
+        where: { 
+          ticket_no: normalizedTicketNo,
+          isenabled: true 
+        } 
+      });
 
-    if (!ticket) {
-      throw new NotFoundException(`ไม่พบ Ticket No: ${normalizedTicketNo}`);
+      if (!ticket) {
+        console.log(`❌ Ticket not found: ${normalizedTicketNo}`);
+        throw new NotFoundException(`ไม่พบ Ticket No: ${normalizedTicketNo}`);
+      }
+
+      console.log(`✅ Ticket found: ID ${ticket.id}, created by: ${ticket.create_by}`);
+
+      // ✅ ตรวจสอบสิทธิ์ - เป็นเจ้าของหรือมีสิทธิ์ delete
+      if (ticket.create_by !== userId) {
+        console.log(`❌ Permission denied: ${userId} is not owner of ticket created by ${ticket.create_by}`);
+        throw new ForbiddenException('คุณไม่มีสิทธิ์ลบตั๋วนี้ (ไม่ใช่เจ้าของ)');
+      }
+
+      console.log('✅ Permission granted - user is ticket owner');
+
+      // ✅ Soft delete ticket (แค่เปลี่ยน isenabled เป็น false)
+      ticket.isenabled = false;
+      ticket.update_by = userId;
+      ticket.update_date = new Date();
+
+      // ✅ ถ้า entity มี deleted_at field ให้ uncomment บรรทัดนี้
+      // ticket.deleted_at = new Date();
+
+      await this.ticketRepo.save(ticket);
+      console.log('✅ Ticket soft deleted successfully');
+
+      // ✅ Soft delete attachments ด้วย (ถ้ามี service)
+      try {
+        await this.attachmentService.softDeleteAllByTicketId(ticket.id);
+        console.log('✅ Attachments soft deleted successfully');
+      } catch (attachmentError) {
+        console.warn('⚠️ Warning: Could not soft delete attachments:', attachmentError.message);
+        // ไม่ throw error เพราะการลบ ticket หลักสำเร็จแล้ว
+      }
+
+      console.log(`✅ Soft delete completed for ticket ${normalizedTicketNo}`);
+    } catch (error) {
+      console.error('💥 Error in softDeleteTicket:', error);
+      throw error;
     }
-
-    // ตรวจสอบสิทธิ์
-    if (ticket.create_by !== userId) {
-      throw new ForbiddenException('You do not have permission to delete this ticket');
-    }
-
-    // Soft delete ticket
-    ticket.isenabled = false;
-    ticket.deleted_at = new Date();
-    ticket.update_by = userId;
-    ticket.update_date = new Date();
-
-    await this.ticketRepo.save(ticket);
-
-    // Soft delete attachments ด้วย
-    await this.attachmentService.softDeleteAllByTicketId(ticket.id);
   }
 
+  // ✅ แก้ไข restoreTicketByNo method
   async restoreTicketByNo(ticket_no: string, userId: number): Promise<void> {
-    const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
-    
-    const ticket = await this.ticketRepo.findOne({ 
-      where: { 
-        ticket_no: normalizedTicketNo,
-        isenabled: false 
-      } 
-    });
+    try {
+      console.log(`🔄 Restoring ticket: ${ticket_no} by user: ${userId}`);
+      
+      const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
+      
+      const ticket = await this.ticketRepo.findOne({ 
+        where: { 
+          ticket_no: normalizedTicketNo,
+          isenabled: false // หาตั๋วที่ถูกลบ
+        } 
+      });
 
-    if (!ticket) {
-      throw new NotFoundException(`ไม่พบ Ticket No ที่ถูกลบ: ${normalizedTicketNo}`);
-    }
+      if (!ticket) {
+        console.log(`❌ Deleted ticket not found: ${normalizedTicketNo}`);
+        throw new NotFoundException(`ไม่พบ Ticket No ที่ถูกลบ: ${normalizedTicketNo}`);
+      }
 
-    // ตรวจสอบสิทธิ์
-    if (ticket.create_by !== userId) {
-      throw new ForbiddenException('You do not have permission to restore this ticket');
-    }
+      console.log(`✅ Deleted ticket found: ID ${ticket.id}`);
 
-    // ตรวจสอบว่ายังกู้คืนได้หรือไม่ (ภายใน 7 วัน)
-    if (ticket.deleted_at) {
+      // ✅ ตรวจสอบสิทธิ์
+      if (ticket.create_by !== userId) {
+        console.log(`❌ Restore permission denied`);
+        throw new ForbiddenException('คุณไม่มีสิทธิ์กู้คืนตั๋วนี้ (ไม่ใช่เจ้าของ)');
+      }
+
+      // ✅ ตรวจสอบระยะเวลา (ถ้าต้องการ - 7 วัน)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-      if (ticket.deleted_at < sevenDaysAgo) {
-        throw new BadRequestException('Cannot restore ticket. Restoration period expired (over 7 days).');
+      
+      if (ticket.update_date && ticket.update_date < sevenDaysAgo) {
+        console.log(`❌ Restore period expired`);
+        throw new BadRequestException('ไม่สามารถกู้คืนได้ เนื่องจากเกินระยะเวลา 7 วัน');
       }
+
+      console.log('✅ Restore permission granted');
+
+      // ✅ Restore ticket
+      ticket.isenabled = true;
+      ticket.update_by = userId;
+      ticket.update_date = new Date();
+
+      // ✅ ถ้า entity มี deleted_at field ให้ uncomment บรรทัดนี้
+      // ticket.deleted_at = null;
+
+      await this.ticketRepo.save(ticket);
+      console.log('✅ Ticket restored successfully');
+
+      // ✅ Restore attachments ด้วย (ถ้ามี service)
+      try {
+        await this.attachmentService.restoreAllByTicketId(ticket.id);
+        console.log('✅ Attachments restored successfully');
+      } catch (attachmentError) {
+        console.warn('⚠️ Warning: Could not restore attachments:', attachmentError.message);
+      }
+
+      console.log(`✅ Restore completed for ticket ${normalizedTicketNo}`);
+    } catch (error) {
+      console.error('💥 Error in restoreTicketByNo:', error);
+      throw error;
     }
+  }
 
-    // Restore ticket
-    ticket.isenabled = true;
-    ticket.deleted_at = undefined;
-    ticket.update_by = userId;
-    ticket.update_date = new Date();
+  // ✅ เพิ่ม method ดึงตั๋วที่ถูกลบ (ปรับให้ไม่ต้องใช้ deleted_at)
+  async getDeletedTickets(): Promise<any[]> {
+    try {
+      console.log('📋 Getting deleted tickets...');
+      
+      const deletedTickets = await this.ticketRepo.find({
+        where: { isenabled: false },
+        order: { update_date: 'DESC' }, // ใช้ update_date แทน deleted_at
+        take: 50 // จำกัดแค่ 50 รายการล่าสุด
+      });
 
-    await this.ticketRepo.save(ticket);
+      console.log(`✅ Found ${deletedTickets.length} deleted tickets`);
 
-    // Restore attachments ด้วย
-    await this.attachmentService.restoreAllByTicketId(ticket.id);
+      return deletedTickets.map(ticket => {
+        // ตรวจสอบว่ากู้คืนได้หรือไม่ (ภายใน 7 วัน)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const canRestore = ticket.update_date && ticket.update_date > sevenDaysAgo;
+
+        return {
+          id: ticket.id,
+          ticket_no: ticket.ticket_no,
+          issue_description: ticket.issue_description?.substring(0, 100) + '...', // ตัดข้อความ
+          create_by: ticket.create_by,
+          create_date: ticket.create_date,
+          deleted_at: ticket.update_date, // ใช้ update_date เป็น deleted_at
+          update_by: ticket.update_by,
+          can_restore: canRestore,
+          days_until_permanent_delete: canRestore ? 
+            Math.ceil((ticket.update_date.getTime() + 7*24*60*60*1000 - Date.now()) / (24*60*60*1000)) : 0
+        };
+      });
+    } catch (error) {
+      console.error('💥 Error getting deleted tickets:', error);
+      return [];
+    }
   }
 
   // ✅ เพิ่ม method ค้นหา ticket จาก ticket_no
@@ -909,25 +996,40 @@ export class TicketService {
     };
   }
 
-  private async createAttachments(files: Express.Multer.File[], ticketId: number, currentUserId: number, result: any) {
-    const attachments:TicketAttachment[] = [];
+  private async createAttachments(
+    files: Express.Multer.File[],
+    ticketId: number,
+    currentUserId: number,
+    result: any
+  ) {
+    const attachments: TicketAttachment[] = [];
+
+    let counter = 1; // เริ่มนับไฟล์
 
     for (const file of files) {
+      const extension = file.originalname.split('.').pop()?.substring(0, 10) || '';
+
+      // ใช้ pattern: [ticket_id]_[counter].[extension]
+      const filename = `${ticketId}_${counter}.${extension}`;
+
       const attachmentData = {
-        id: ticketId,
-        type: 'supporter',
-        extension: file.originalname.split('.').pop(),
-        filename: file.filename || file.originalname,
+        ticket_id: ticketId,
+        type: 'reporter', // หรือ supporter ตามที่ใช้
+        extension: extension,
+        filename: filename.substring(0, 10), // ป้องกันยาวเกิน varchar(10)
         create_by: currentUserId,
         update_by: currentUserId
       };
 
       const attachment = await this.attachmentRepo.save(attachmentData);
       attachments.push(attachment);
+
+      counter++; // เพิ่มลำดับไฟล์
     }
 
     result['attachments'] = attachments;
   }
+
 
   // ✅ เพิ่ม method สำหรับ update ticket ด้วย ticket_no (ที่ Controller ต้องการ)
   async updateTicket(
@@ -1078,7 +1180,7 @@ export class TicketService {
     }
 
     // check ticket it close?
-    if (ticket.status_id !== 4) {
+    if (ticket.status_id !== 5) {
       throw new Error('สามารถประเมินความพึงพอใจได้เฉพาะ ticket ที่เสร็จสิ้นแล้วเท่านั้น')
     }
 

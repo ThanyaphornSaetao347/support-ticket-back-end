@@ -17,7 +17,8 @@ import {
   UploadedFiles,
   HttpCode,
   ForbiddenException,
-  NotFoundException
+  NotFoundException,
+  UnauthorizedException
 } from '@nestjs/common';
 import { TicketService } from './ticket.service';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
@@ -26,11 +27,16 @@ import { TicketStatusService } from 'src/ticket_status/ticket_status.service';
 import { ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { CreateSatisfactionDto } from 'src/satisfaction/dto/create-satisfaction.dto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Ticket } from './entities/ticket.entity';
+import { Repository } from 'typeorm';
 
 
 @Controller('api')
 export class TicketController {
   constructor(
+    @InjectRepository(Ticket)
+    private readonly ticketRepo: Repository<Ticket>,
     private readonly ticketService: TicketService,
     private readonly ticketStatusService: TicketStatusService,
     private readonly ststusService: TicketStatusService,
@@ -175,6 +181,9 @@ export class TicketController {
     if (!userId) return false;
     
     try {
+
+      console.log(`🔒 Checking permission for user ${userId}:`, permissions);
+      
       const userPermissions: number[] = await this.ticketService.checkUserPermissions(userId); // [1, 2, 3]
 
       if (!userPermissions || !userPermissions.length) return false;
@@ -743,6 +752,7 @@ export class TicketController {
     }
   }
 
+  // ✅ ลบตั๋วด้วย ticket_no
   @Delete('tickets/:ticket_no')
   @UseGuards(JwtAuthGuard)
   async deleteTicketByNo(
@@ -750,9 +760,12 @@ export class TicketController {
     @Request() req: any
   ) {
     try {
+      console.log(`🗑️ Attempting to delete ticket: ${ticket_no}`);
+      
       const userId = this.extractUserId(req);
       
       if (!userId) {
+        console.log('❌ User not authenticated');
         return {
           code: 2,
           message: 'User not authenticated',
@@ -760,28 +773,59 @@ export class TicketController {
         };
       }
 
-      // ✅ เพิ่มการตรวจสอบสิทธิ์ DELETE_TICKET
-      if (!await this.checkPermission(userId, [this.PERMISSIONS.DELETE_TICKET])) {
+      console.log(`👤 User ID: ${userId}`);
+
+      // ✅ ตรวจสอบสิทธิ์
+      const hasPermission = await this.checkPermission(userId, [this.PERMISSIONS.DELETE_TICKET]);
+      console.log(`🔒 Delete permission: ${hasPermission}`);
+      
+      if (!hasPermission) {
+        console.log('❌ Permission denied');
         throw new ForbiddenException('ไม่มีสิทธิ์ในการลบตั๋วปัญหา');
       }
 
-      await this.ticketService.softDeleteTicket(ticket_no, userId);
+      // ✅ ตรวจสอบว่าเป็นเจ้าของตั๋วหรือไม่
+      const canDelete = await this.canDeleteTicket(userId, ticket_no);
+      console.log(`👤 Can delete ticket: ${canDelete}`);
+      
+      if (!canDelete) {
+        console.log('❌ Not ticket owner or no permission');
+        throw new ForbiddenException('ไม่มีสิทธิ์ในการลบตั๋วนี้ (ไม่ใช่เจ้าของหรือไม่มีสิทธิ์)');
+      }
 
+      console.log('✅ Proceeding with soft delete...');
+      await this.ticketService.softDeleteTicket(ticket_no, userId);
+      
+      console.log('✅ Ticket deleted successfully');
       return {
         code: 1,
-        message: 'Ticket deleted successfully',
-        data: null,
+        message: 'ลบตั๋วสำเร็จ',
+        data: {
+          ticket_no: ticket_no,
+          deleted_by: userId,
+          deleted_at: new Date().toISOString()
+        },
       };
     } catch (error) {
-      console.error('Error:', error.message);
+      console.error('💥 Error deleting ticket:', error);
+      
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
+        return {
+          code: 2,
+          message: error.message,
+          data: null,
+        };
+      }
+      
       return {
         code: 2,
-        message: error.message || 'เกิดข้อผิดพลาด',
+        message: error.message || 'เกิดข้อผิดพลาดในการลบตั๋ว',
         data: null,
       };
     }
   }
 
+  // ✅ กู้คืนตั๋ว
   @Post('tickets/restore/:ticket_no')
   @UseGuards(JwtAuthGuard)
   async restoreTicketByNo(
@@ -789,6 +833,8 @@ export class TicketController {
     @Request() req: any
   ) {
     try {
+      console.log(`🔄 Attempting to restore ticket: ${ticket_no}`);
+      
       const userId = this.extractUserId(req);
       
       if (!userId) {
@@ -799,20 +845,63 @@ export class TicketController {
         };
       }
 
-      // ✅ เพิ่มการตรวจสอบสิทธิ์ RESTORE_TICKET
+      // ✅ ตรวจสอบสิทธิ์
       if (!await this.checkPermission(userId, [this.PERMISSIONS.RESTORE_TICKET])) {
         throw new ForbiddenException('ไม่มีสิทธิ์ในการกู้คืนตั๋วปัญหา');
       }
 
       await this.ticketService.restoreTicketByNo(ticket_no, userId);
 
+      console.log('✅ Ticket restored successfully');
       return {
         code: 1,
-        message: 'Ticket restored successfully',
-        data: null,
+        message: 'กู้คืนตั๋วสำเร็จ',
+        data: {
+          ticket_no: ticket_no,
+          restored_by: userId,
+          restored_at: new Date().toISOString()
+        },
       };
     } catch (error) {
-      console.error('Error:', error.message);
+      console.error('💥 Error restoring ticket:', error);
+      
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
+        return {
+          code: 2,
+          message: error.message,
+          data: null,
+        };
+      }
+      
+      return {
+        code: 2,
+        message: error.message || 'เกิดข้อผิดพลาดในการกู้คืน',
+        data: null,
+      };
+    }
+  }
+
+  // ✅ ดูรายการตั๋วที่ถูกลบ (สำหรับ admin)
+  @Get('tickets/deleted')
+  @UseGuards(JwtAuthGuard)
+  async softDeleteTicket(@Request() req: any) {
+    try {
+      const userId = this.extractUserId(req);
+      
+      // ✅ ตรวจสอบสิทธิ์ admin
+      if (!await this.checkPermission(userId!, [this.PERMISSIONS.VIEW_ALL_TICKETS])) {
+        throw new ForbiddenException('ไม่มีสิทธิ์ในการดูตั๋วที่ถูกลบ');
+      }
+
+      const deletedTickets = await this.ticketService.getDeletedTickets();
+      
+      return {
+        code: 1,
+        message: 'ดึงรายการตั๋วที่ถูกลบสำเร็จ',
+        data: deletedTickets,
+      };
+    } catch (error) {
+      console.error('💥 Error getting deleted tickets:', error);
       return {
         code: 2,
         message: error.message || 'เกิดข้อผิดพลาด',
@@ -821,21 +910,50 @@ export class TicketController {
     }
   }
 
-  // ✅ Generic :id route comes LAST to avoid conflicts
-  @Get(':id')
-  @UseGuards(JwtAuthGuard)
-  async getTicket(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
-    // ✅ เพิ่มการตรวจสอบสิทธิ์ TRACK_TICKET
-    const userId = this.extractUserId(req);
-    if (!await this.checkPermission(userId!, [this.PERMISSIONS.TRACK_TICKET])) {
-      throw new ForbiddenException('ไม่มีสิทธิ์ในการดูตั๋วปัญหา');
-    }
+  // ✅ แก้ไขใน getDeletedTickets method
+  async getDeletedTickets(@Request() req: any) {
+    try {
+      const userId = this.extractUserId(req);
+      
+      if (!await this.checkPermission(userId!, [this.PERMISSIONS.VIEW_ALL_TICKETS])) {
+        throw new ForbiddenException('ไม่มีสิทธิ์ในการดูตั๋วที่ถูกลบ');
+      }
 
-    return this.ticketService.findTicketById(id);
+      // ✅ เรียกจาก service และจัดการ undefined ใน Controller
+      const deletedTickets = await this.ticketService.getDeletedTickets();
+      
+      const processedTickets = deletedTickets.map(ticket => ({
+        ...ticket,
+        can_restore: ticket.update_date ? this.canRestoreTicket(ticket.update_date) : false
+      }));
+      
+      return {
+        code: 1,
+        message: 'ดึงรายการตั๋วที่ถูกลบสำเร็จ',
+        data: processedTickets,
+      };
+    } catch (error) {
+      console.error('💥 Error getting deleted tickets:', error);
+      return {
+        code: 2,
+        message: error.message || 'เกิดข้อผิดพลาด',
+        data: null,
+      };
+    }
+  }
+
+  // ✅ ตรวจสอบว่ากู้คืนได้หรือไม่
+  private canRestoreTicket(deletedAt: Date): boolean {
+    if (!deletedAt) return false;
+    
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    return deletedAt > sevenDaysAgo;
   }
 
   // rating from user
-  @Post('saveSatisfaction/:ticket_no')
+  @Post('satisfaction/:ticket_no')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
   async saveSatisfaction(
@@ -907,6 +1025,7 @@ export class TicketController {
 
   // ✅ ปรับปรุง extractUserId ให้ debug และ handle หลาย format
   private extractUserId(req: any): number | null {
+    console.log('🔍 Request user object:', req.user);
     console.log('🔍 === extractUserId Debug ===');
     console.log('Full req.user object:', JSON.stringify(req.user, null, 2));
     
@@ -955,7 +1074,6 @@ export class TicketController {
     console.log('=== End User Object Debug ===');
   }
 
-  // ✅ ปรับปรุง getTicketStatus
   @UseGuards(JwtAuthGuard)
   @Get(':id/status')
   async getTicketStatus(
@@ -963,16 +1081,31 @@ export class TicketController {
     @Req() req: any
   ) {
     try {
-      // ✅ ตรวจสอบสิทธิ์ก่อน
+      // เพิ่ม debug logs
+      console.log('🚀 Request started for ticket:', ticketId);
+      console.log('🔍 Request headers:', req.headers);
+      console.log('🔍 Request user:', req.user);
+      
       const userId = this.extractUserId(req);
-      if (!await this.checkPermission(userId!, [this.PERMISSIONS.TRACK_TICKET])) {
+      console.log('👤 Extracted user ID:', userId);
+      
+      if (!userId) {
+        console.log('❌ User ID extraction failed');
+        throw new UnauthorizedException('Cannot extract user information from token');
+      }
+      
+      console.log('🔒 Starting permission check...');
+      const hasPermission = await this.checkPermission(userId, [this.PERMISSIONS.TRACK_TICKET]);
+      console.log('🔒 Permission check result:', hasPermission);
+      
+      if (!hasPermission) {
+        console.log('❌ Permission denied');
         throw new ForbiddenException('ไม่มีสิทธิ์ในการดูสถานะตั๋วปัญหา');
       }
 
-      // ✅ ตรวจจับภาษา
       const languageId = this.getLanguage(req);
+      console.log('🌐 Language detected:', languageId);
       
-      // ✅ Log ข้อมูล request
       this.logRequestInfo(req, {
         ticketId,
         detectedLanguage: languageId,
@@ -981,7 +1114,6 @@ export class TicketController {
 
       console.log(`🎫 Getting status for ticket ${ticketId}, language: ${languageId}`);
 
-      // ✅ ดึงข้อมูลสถานะ
       const ticketStatus = await this.ticketStatusService.getTicketStatusWithName(
         ticketId,
         languageId
@@ -991,7 +1123,6 @@ export class TicketController {
         throw new NotFoundException(`ไม่พบตั๋วปัญหา ID: ${ticketId}`);
       }
 
-      // ✅ ส่งข้อมูลกลับพร้อมข้อมูลเพิ่มเติม
       return {
         code: 1,
         message: 'Success',
@@ -1004,6 +1135,11 @@ export class TicketController {
       
     } catch (error) {
       console.error('💥 Error getting ticket status:', error);
+      console.error('💥 Error stack:', error.stack);
+      
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       
       if (error instanceof ForbiddenException || error instanceof NotFoundException) {
         throw error;
