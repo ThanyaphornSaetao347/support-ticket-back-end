@@ -7,6 +7,8 @@ import { Ticket } from 'src/ticket/entities/ticket.entity';
 import { DataSource, Repository } from 'typeorm';
 import { TicketStatusLanguage } from 'src/ticket_status_language/entities/ticket_status_language.entity';
 import { TicketStatusHistoryService } from 'src/ticket_status_history/ticket_status_history.service';
+import { Notification } from 'src/notification/entities/notification.entity';
+import { NotificationService } from 'src/notification/notification.service';
 
 @Injectable()
 export class TicketStatusService {
@@ -19,6 +21,7 @@ export class TicketStatusService {
     @InjectRepository(TicketStatusLanguage)
     private readonly statusLangRepo: Repository<TicketStatusLanguage>,
 
+    private readonly notiService: NotificationService,
     private dataSource: DataSource,
   ){}
 
@@ -303,7 +306,7 @@ export class TicketStatusService {
       }
     }
 
-  // ✅ Method หลักสำหรับอัพเดต ticket status และบันทึก history
+  // ✅ อัพเดท method ที่มีอยู่แล้ว - เพิ่ม notification
   async updateTicketStatusAndHistory(
     ticketId: number,
     newStatusId: number,
@@ -353,10 +356,9 @@ export class TicketStatusService {
 
       const updatedTicket = await queryRunner.manager.save(Ticket, ticket);
 
-      // ✅ บันทึก status history (แบบใหม่ - ไม่ใช้ service เพื่อให้แน่ใจ)
+      // ✅ บันทึก status history
       let history: any = null;
       
-      // ✅ สร้าง history record ใหม่เสมอ (ไม่ว่า status จะเปลี่ยนหรือไม่)
       const historyData = {
         ticket_id: ticketId,
         status_id: newStatusId,
@@ -367,7 +369,6 @@ export class TicketStatusService {
           `Status update to ${newStatusId}`),
       };
 
-      // ✅ Insert โดยตรงเพื่อให้แน่ใจ
       const historyResult = await queryRunner.manager
         .createQueryBuilder()
         .insert()
@@ -377,7 +378,6 @@ export class TicketStatusService {
 
       console.log('✅ History inserted with ID:', historyResult.identifiers[0]);
 
-      // ✅ ดึงข้อมูล history ที่เพิ่งสร้าง
       const savedHistory = await queryRunner.manager
         .createQueryBuilder()
         .select('*')
@@ -392,6 +392,19 @@ export class TicketStatusService {
       const statusName = await this.getStatusNameFromDatabase(newStatusId);
 
       await queryRunner.commitTransaction();
+
+      // 🔔 ส่ง notification หลังจาก commit transaction สำเร็จ
+      try {
+        // เฉพาะกรณีที่ status เปลี่ยนจริงๆ
+        if (oldStatusId !== newStatusId) {
+          console.log(`📧 Sending status change notification for ticket ${ticketId}`);
+          await this.notiService.createStatusChangeNotification(ticketId.toString(), newStatusId);
+          console.log(`✅ Status change notification sent successfully`);
+        }
+      } catch (notificationError) {
+        // ไม่ให้ notification error กระทบ main operation
+        console.error('❌ Failed to send status change notification:', notificationError);
+      }
 
       console.log(`✅ Ticket ${ticketId} status updated successfully`);
 

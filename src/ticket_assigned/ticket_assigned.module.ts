@@ -6,6 +6,7 @@ import { UserAllowRole } from 'src/user_allow_role/entities/user_allow_role.enti
 import { Ticket } from 'src/ticket/entities/ticket.entity';
 import { TicketAssigned } from './entities/ticket_assigned.entity';
 import { Users } from 'src/users/entities/user.entity';
+import { NotificationModule } from 'src/notification/notification.module';
 
 @Module({
   imports: [
@@ -14,7 +15,8 @@ import { Users } from 'src/users/entities/user.entity';
       TicketAssigned,
       Users,
       UserAllowRole
-    ])
+    ]),
+    NotificationModule,
   ],
   controllers: [TicketAssignedController],
   providers: [TicketAssignedService],

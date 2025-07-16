@@ -14,6 +14,11 @@ import { TicketStatusLanguage } from 'src/ticket_status_language/entities/ticket
 import { CreateTicketStatusDto } from 'src/ticket_status/dto/create-ticket_status.dto';
 import { CreateSatisfactionDto } from 'src/satisfaction/dto/create-satisfaction.dto';
 import { Satisfaction } from 'src/satisfaction/entities/satisfaction.entity';
+import { NotificationService } from 'src/notification/notification.service';
+import { privateDecrypt } from 'crypto';
+import { NotificationType } from 'src/notification/entities/notification.entity';
+import { Users } from 'src/users/entities/user.entity';
+import { TicketAssigned } from 'src/ticket_assigned/entities/ticket_assigned.entity';
 
 @Injectable()
 export class TicketService {
@@ -33,6 +38,12 @@ export class TicketService {
     private readonly statusRepo: Repository<TicketStatus>,
     @InjectRepository(Satisfaction)
     private readonly satisfactionRepo: Repository<Satisfaction>,
+    @InjectRepository(Users)
+    private readonly userRepo: Repository<Users>,
+    @InjectRepository(TicketAssigned)
+    private readonly assignRepo: Repository<TicketAssigned>,
+
+    private readonly notiService: NotificationService,
   ) {}
 
   // ✅ แก้ไข checkTicketOwnership สำหรับ PostgreSQL
@@ -129,6 +140,9 @@ export class TicketService {
         const savedTicket = await this.ticketRepo.save(ticket);
         ticket_id = savedTicket.id;
         status = true;
+
+        // sent noti to supporter
+        await this.notifySupporters(savedTicket);
       }
       
       return {
@@ -139,6 +153,42 @@ export class TicketService {
     } catch (error) {
       console.error('Error in createTicket:', error);
       throw error;
+    }
+  }
+
+  private async notifySupporters(ticket: Ticket) {
+    try {
+      const supporterRoleIds = [5, 6, 7, 8, 9, 10, 13]
+
+      const supporterUserIds = await this.userRepo
+      .createQueryBuilder('u')
+      .select('DISTINCT u.id')
+      .innerJoin('user_allow_role', 'uar', 'uar.user_id = u.id')
+      .innerJoin('master_role', 'ms', 'ms.id = uar.role_id')
+      .where('ms.id IN (:...supporterRoleIds)', {supporterRoleIds})
+      .getRawMany();
+
+      if (supporterRoleIds.length === 0) {
+        console.warn('No Supporter found for notification')
+        return;
+      }
+
+      const userIds = supporterUserIds.map(u => u.id);
+      const supporters = await this.userRepo.findByIds(userIds)
+
+      console.log(`Found ${supporters.length} supporter:`, userIds)
+
+
+      for (const supporter of supporters) {
+        try {
+          await this.notiService.createNewTicketNotification(ticket.ticket_no);
+          console.log(`Notification sent to supporter: ${supporter.id} (${supporter.email})`);
+        } catch (notifyError) {
+          console .error(`Failed to notify supporter ${supporter.id}:`, notifyError);
+        }
+      }
+    } catch (error) {
+      console.error('Error notifying supporters:', error);
     }
   }
 
@@ -608,6 +658,7 @@ export class TicketService {
           't.create_date'
         ])
         .where('t.create_by = :userId', { userId })
+        .andWhere('t.isenabled = true')
         .orderBy('t.create_date', 'DESC')
         .getMany();
 

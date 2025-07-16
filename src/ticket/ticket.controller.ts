@@ -18,7 +18,8 @@ import {
   HttpCode,
   ForbiddenException,
   NotFoundException,
-  UnauthorizedException
+  UnauthorizedException,
+  Query
 } from '@nestjs/common';
 import { TicketService } from './ticket.service';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
@@ -29,7 +30,11 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { CreateSatisfactionDto } from 'src/satisfaction/dto/create-satisfaction.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Ticket } from './entities/ticket.entity';
-import { Repository } from 'typeorm';
+import { ForbiddenTransactionModeOverrideError, Repository } from 'typeorm';
+import { NotificationType } from 'src/notification/entities/notification.entity';
+import { NotificationService } from 'src/notification/notification.service';
+import { data } from 'jquery';
+import { identity } from 'rxjs';
 
 
 @Controller('api')
@@ -40,6 +45,7 @@ export class TicketController {
     private readonly ticketService: TicketService,
     private readonly ticketStatusService: TicketStatusService,
     private readonly ststusService: TicketStatusService,
+    private readonly notiService: NotificationService,
   ){}
 
   private readonly PERMISSIONS = {
@@ -54,9 +60,9 @@ export class TicketController {
     ASSIGNEE: 9,               // ผู้รับเรื่อง
     OPEN_TICKET: 10,           // เปิด ticket
     RESTORE_TICKET: 11,        // กู้คืน ticket
-    VIEW_OWN_TICKETS: 12,       // ✅ ดูตั๋วทั้งหมดที่ตัวเองสร้าง
-    VIEW_ALL_TICKETS: 13,
-    SATISFACTION: 14,
+    VIEW_OWN_TICKETS: 12,      // ✅ ดูตั๋วทั้งหมดที่ตัวเองสร้าง
+    VIEW_ALL_TICKETS: 13,      // ดูตั๋วทั้งหมด
+    SATISFACTION: 14,          // ประเมินความพึงพอใจ
   };
 
   // ✅ เพิ่ม Language Detection Methods
@@ -176,21 +182,43 @@ export class TicketController {
     });
   }
 
-  // ฟังก์ชันตรวจสอบสิทธิ์ (ใช้ ticketService ที่มีอยู่แล้ว)
+  // ✅ ปรับปรุง checkPermission ให้ debug ชัดเจนขึ้น
   private async checkPermission(userId: number, permissions: number[]): Promise<boolean> {
-    if (!userId) return false;
+    if (!userId) {
+      console.log('❌ checkPermission: userId is null/undefined');
+      return false;
+    }
     
     try {
-
-      console.log(`🔒 Checking permission for user ${userId}:`, permissions);
+      console.log(`🔒 === checkPermission Debug ===`);
+      console.log(`User ID: ${userId}`);
+      console.log(`Required permissions: ${permissions}`);
       
-      const userPermissions: number[] = await this.ticketService.checkUserPermissions(userId); // [1, 2, 3]
+      const userPermissions: number[] = await this.ticketService.checkUserPermissions(userId);
+      console.log('User permissions from DB:', userPermissions);
 
-      if (!userPermissions || !userPermissions.length) return false;
+      if (!userPermissions || !userPermissions.length) {
+        console.log('❌ User has no permissions in database');
+        return false;
+      }
 
-      return permissions.every(permission => userPermissions.includes(permission));
+      // ✅ ตรวจสอบทีละ permission
+      const results = permissions.map(requiredPerm => {
+        const hasIt = userPermissions.includes(requiredPerm);
+        console.log(`Permission ${requiredPerm}: ${hasIt ? '✅' : '❌'}`);
+        return hasIt;
+      });
+
+      // ต้องมีทุก permission ที่ต้องการ
+      const hasAllPermissions = results.some(result => result === true);
+      
+      console.log(`Final result: ${hasAllPermissions ? '✅ ALLOWED' : '❌ DENIED'}`);
+      console.log(`=== End checkPermission Debug ===`);
+      
+      return hasAllPermissions;
+      
     } catch (error) {
-      console.error('Permission check error:', error);
+      console.error('💥 Permission check error:', error);
       return false;
     }
   }
@@ -342,6 +370,74 @@ export class TicketController {
 
     return false;
   }
+
+  // ✅ แก้ไข canViewAllTicket ให้ง่ายและชัดเจน
+  private async canViewAllTicket(userId: number, ticketNo: string): Promise<boolean> {
+    try {
+      console.log('👀 === canViewAllTicket Debug ===');
+      console.log('Input parameters:', { userId, ticketNo });
+      
+      if (!userId) {
+        console.log('❌ Invalid userId');
+        return false;
+      }
+
+      const numericUserId = typeof userId === 'string' ? parseInt(userId) : userId;
+      
+      if (isNaN(numericUserId)) {
+        console.log('❌ userId is not a valid number:', userId);
+        return false;
+      }
+
+      // ✅ ดึงข้อมูล user permissions
+      console.log('🔍 Getting user permissions...');
+      const userPermissions: number[] = await this.ticketService.checkUserPermissions(numericUserId);
+      console.log('📋 User permissions from database:', userPermissions);
+
+      // ✅ เช็คแบบง่ายๆ - ถ้ามี permission 13 ให้ผ่านเลย
+      if (userPermissions.includes(13)) {
+        console.log('✅ User has VIEW_ALL_TICKETS permission (13) - ALLOWED');
+        return true;
+      }
+
+      // ✅ เช็คว่ามี admin permissions หรือไม่ (5-10)
+      const adminPerms = [5, 6, 7, 8, 9, 10, 13];
+      const hasAdminPerm = adminPerms.some(perm => userPermissions.includes(perm));
+      
+      if (hasAdminPerm) {
+        console.log('✅ User has admin permissions - ALLOWED');
+        console.log('Admin permissions found:', adminPerms.filter(p => userPermissions.includes(p)));
+        return true;
+      }
+
+      // ✅ เช็ค TRACK_TICKET (2)
+      if (userPermissions.includes(2)) {
+        console.log('✅ User has TRACK_TICKET permission (2) - ALLOWED');
+        return true;
+      }
+
+      // ✅ ถ้าระบุ ticketNo ให้ตรวจสอบว่าเป็นเจ้าของหรือไม่
+      if (ticketNo) {
+        console.log('🔍 Checking ticket ownership...');
+        const isOwner = await this.isTicketOwnerByNo(numericUserId, ticketNo);
+        console.log('👤 Is ticket owner:', isOwner);
+        
+        if (isOwner) {
+          console.log('✅ User is ticket owner - ALLOWED');
+          return true;
+        }
+      }
+
+      console.log('❌ DENIED - User has no permission to view tickets');
+      console.log('❌ User permissions:', userPermissions);
+      console.log('❌ Required: permission 13 OR admin perms (5-10) OR track perm (2) OR ownership');
+      
+      return false;
+    } catch (error) {
+      console.error('💥 Error in canViewAllTicket:', error);
+      return false;
+    }
+  }
   
   @UseGuards(JwtAuthGuard)
   @Post('saveTicket')
@@ -485,7 +581,7 @@ export class TicketController {
 
       // ✅ ตรวจสอบการเข้าถึง พร้อม debug
       console.log('🔐 Checking access for userId:', userId, 'ticketNo:', ticketNo);
-      const canAccess = await this.canAccessTicketByNo(userId, ticketNo);
+      const canAccess = await this.canViewAllTicket(userId, ticketNo);
       console.log('Access result:', canAccess);
       
       if (!canAccess) {
@@ -613,13 +709,42 @@ export class TicketController {
   @UseGuards(JwtAuthGuard)
   @Post('getAllMasterFilter')
   async getAllMAsterFilter(@Req() req) {
-    // ✅ เพิ่มการตรวจสอบสิทธิ์ TRACK_TICKET
-    const userId = req.user.user_id;
-    if (!await this.checkPermission(userId, [this.PERMISSIONS.TRACK_TICKET])) {
-      throw new ForbiddenException('ไม่มีสิทธิ์ในการดูข้อมูล');
-    }
+    try {
+      console.log('📋 === getAllMasterFilter Debug ===');
 
-    return await this.ticketService.getAllMAsterFilter(userId);
+      const userId = this.extractUserId(req);
+      console.log('👤 Extracted userId:', userId);
+
+      if (!userId) {
+        throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+      }
+
+      // ✅ รวมค่าของทุก permission
+      const allPermissions = Object.values(this.PERMISSIONS);
+      console.log('🔒 Checking permissions:', allPermissions);
+
+      // ✅ ตรวจสอบว่า user มีสิทธิ์ใดๆ อย่างน้อย 1 รายการ
+      const hasAnyPermission = await this.checkPermission(userId, allPermissions);
+      console.log('🔒 Has any permission:', hasAnyPermission);
+
+      if (!hasAnyPermission) {
+        throw new ForbiddenException('ไม่มีสิทธิ์ในการดูข้อมูล');
+      }
+
+      // ✅ ดึงข้อมูล Master Filter
+      const result = await this.ticketService.getAllMAsterFilter(userId);
+      console.log('✅ getAllMasterFilter success');
+
+      return result;
+    } catch (error) {
+      console.error('💥 Error in getAllMasterFilter:', error);
+
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+
+      throw new HttpException('เกิดข้อผิดพลาดในระบบ', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 
   // ✅ Specific ticket routes (with "ticket" prefix) come BEFORE generic :id route
@@ -1152,5 +1277,336 @@ export class TicketController {
         data: null
       };
     }
+  }
+
+  // ✅ Fixed: Get user notifications with proper error handling
+  @UseGuards(JwtAuthGuard)
+  @Get('getUserNotification')
+  async getUserNotification(
+    @Req() req: any,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+    @Query('type') type?: NotificationType
+  ) {
+    try {
+      const userId = this.extractUserId(req);
+      if (!userId) {
+        throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+      }
+
+      // ✅ Proper parameter validation
+      const pageNumber = Math.max(1, parseInt(page) || 1);
+      const limitNumber = Math.min(100, Math.max(1, parseInt(limit) || 20));
+
+      let result;
+      if (type && Object.values(NotificationType).includes(type)) {
+        result = await this.notiService.getNotificationsByType(
+          userId,
+          type,
+          pageNumber,
+          limitNumber
+        );
+      } else {
+        result = await this.notiService.getUserNotifications(
+          userId,
+          pageNumber,
+          limitNumber
+        );
+      }
+
+      return {
+        success: true,
+        data: result,
+        message: 'ดึงข้อมูลการแจ้งเตือนสำเร็จ',
+      };
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลการแจ้งเตือน',
+        },
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+  // ✅ Get unread count
+  @UseGuards(JwtAuthGuard)
+  @Get('unread-count')
+  async getUnreadCount(@Req() req: any) {
+    try {
+      const userId = this.extractUserId(req);
+      if (!userId) {
+        throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+      }
+
+      const count = await this.notiService.getUnreadCount(userId);
+
+      return {
+        success: true,
+        data: {
+          unread_count: count,
+          user_id: userId,
+        },
+        message: 'ดึงจำนวนการแจ้งเตือนสำเร็จ',
+      };
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'เกิดข้อผิดพลาดในการดึงจำนวนการแจ้งเตือน',
+        },
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+  // ✅ Get all notification types
+  @UseGuards(JwtAuthGuard)
+  @Get('getAllType')
+  async getNotificationType() {
+    try {
+      const types = Object.values(NotificationType).map((type) => ({
+        value: type,
+        label: this.getTypeLabel(type), // ✅ Fixed typo: 'lable' -> 'label'
+      }));
+
+      return {
+        success: true,
+        data: types,
+        message: 'ดึงประเภทการแจ้งเตือนสำเร็จ',
+      };
+    } catch (error) {
+      throw new HttpException(
+        {
+          success: false,
+          message: 'เกิดข้อผิดพลาดในการดึงประเภทการแจ้งเตือน',
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  // ✅ Get notification by ID with proper authorization
+  @UseGuards(JwtAuthGuard)
+  @Get('getNotification/:id')
+  async getNotificationById(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any
+  ) {
+    try {
+      const userId = this.extractUserId(req);
+      if (!userId) {
+        throw new ForbiddenException('ไม่พบบัญชีผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+      }
+
+      const notification = await this.notiService.findNotificationById(id);
+
+      if (!notification) {
+        throw new HttpException(
+          {
+            success: false,
+            message: 'ไม่พบการแจ้งเตือนที่ต้องการ',
+          },
+          HttpStatus.NOT_FOUND
+        );
+      }
+
+      // ✅ Check permission to access
+      if (notification.user_id !== userId) {
+        const isSupporter = await this.notiService.isUserSupporter(userId);
+        if (!isSupporter) {
+          throw new ForbiddenException('ไม่มีสิทธิ์ในการเข้าถึงการแจ้งเตือนนี้');
+        }
+      }
+
+      return {
+        success: true,
+        data: notification,
+        message: 'ดึงข้อมูลการแจ้งเตือนสำเร็จ',
+      };
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลการแจ้งเตือน',
+        },
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+  // ✅ Get ticket notifications with proper validation
+  @UseGuards(JwtAuthGuard)
+  @Get('notification/:ticket_no')
+  async getTicketNotifications(
+    @Param('ticket_no') ticket_no: string,
+    @Req() req: any,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20'
+  ) {
+    try {
+      const userId = this.extractUserId(req);
+      if (!userId) {
+        throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+      }
+
+      // ✅ Normalize ticket_no
+      let normalizedTicketNo = ticket_no.toString().trim().toUpperCase();
+      if (!normalizedTicketNo.startsWith('T')) {
+        normalizedTicketNo = 'T' + normalizedTicketNo;
+      }
+
+      // ✅ Check permission to access ticket
+      const canAccess = await this.notiService.canAccessTicket(
+        userId,
+        normalizedTicketNo
+      );
+      if (!canAccess) {
+        throw new ForbiddenException('ไม่มีสิทธิ์ในการดูการแจ้งเตือนของตั๋วปัญหานี้');
+      }
+
+      const pageNumber = Math.max(1, parseInt(page) || 1);
+      const limitNumber = Math.min(100, Math.max(1, parseInt(limit) || 20));
+
+      const result = await this.notiService.getTicketNotifications(
+        normalizedTicketNo,
+        pageNumber,
+        limitNumber
+      );
+
+      return {
+        success: true,
+        data: result,
+        message: 'ดึงข้อมูลการแจ้งเตือนของ ticket สำเร็จ',
+      };
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลการแจ้งเตือน',
+        },
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+  // ✅ Fixed: Mark single notification as read (was calling markAllAsRead)
+  @UseGuards(JwtAuthGuard)
+  @Put('markAsRead/:id')
+  async markAsRead(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    try {
+      const userId = this.extractUserId(req);
+      if (!userId) {
+        throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+      }
+
+      // ✅ Fixed: Call markAsRead instead of markAllAsRead
+      const result = await this.notiService.markAsRead(id, userId);
+
+      return {
+        success: true,
+        data: result,
+        message: 'ทำเครื่องหมายอ่านแล้วสำเร็จ',
+      };
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'เกิดข้อผิดพลาดในการทำเครื่องหมายว่าอ่านแล้ว',
+        },
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+  // ✅ Mark all notifications as read
+  @UseGuards(JwtAuthGuard)
+  @Put('notification/read-all')
+  async markAllRead(@Req() req: any) {
+    try {
+      const userId = this.extractUserId(req);
+      if (!userId) {
+        throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+      }
+
+      const result = await this.notiService.markAllAsRead(userId);
+
+      return {
+        success: true,
+        data: {
+          update_count: result.updated,
+          user_id: userId,
+        },
+        message: `ทำเครื่องหมายว่าอ่านแล้ว ${result.updated} รายการ`,
+      };
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'เกิดข้อผิดพลาดในการทำเครื่องหมายอ่านแล้ว',
+        },
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+  // ลบการแจ้งเตือนเฉพาะรายการ
+  // @UseGuards(JwtAuthGuard)
+  // @Delete('notification/:id')
+  // async deleteNotification(
+  //   @Param('id', ParseIntPipe) id: number,
+  //   @Req() req: any
+  // ) {
+  //   try {
+  //     const userId = this.extractUserId(req);
+  //     if (!userId) {
+  //       throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+  //     }
+
+  //     const result = await this.notiService.deleteOldNotifications();
+
+  //     return {
+  //       success: true,
+  //       data: { delete_id: id },
+  //       message: 'ลบการแจ้งเตือนสำเร็จ'
+  //     };
+  //   } catch (error) {
+  //     throw new HttpException({
+  //       success: false,
+  //       message: error.message || 'เกิดข้อผิดพลาดในการลบการแจ้งเตือน'
+  //     }, HttpStatus.BAD_REQUEST)
+  //   }
+  // }
+
+  private getTypeLabel(type: NotificationType): string {
+    const labels: Record<NotificationType, string> = {
+      [NotificationType.NEW_TICKET]: 'ตั๋วใหม่',
+      [NotificationType.STATUS_CHANGE]: 'การเปลี่ยนสถานะ',
+      [NotificationType.ASSIGNMENT]: 'การมอบหมาย',
+    };
+
+    return labels[type] || 'ไม่ทราบประเภท';
   }
 }

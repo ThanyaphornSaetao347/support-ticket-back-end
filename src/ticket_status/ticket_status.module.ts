@@ -7,6 +7,7 @@ import { TicketStatusLanguage } from 'src/ticket_status_language/entities/ticket
 import { Ticket } from 'src/ticket/entities/ticket.entity';
 import { TicketStatusHistoryModule } from 'src/ticket_status_history/ticket_status_history.module';
 import { TicketStatusHistory } from 'src/ticket_status_history/entities/ticket_status_history.entity';
+import { NotificationModule } from 'src/notification/notification.module';
 
 @Module({
   imports: [
@@ -17,7 +18,8 @@ import { TicketStatusHistory } from 'src/ticket_status_history/entities/ticket_s
       TicketStatusHistory
     ]),
     TicketStatusLanguage,
-    TicketStatusHistoryModule
+    TicketStatusHistoryModule,
+    NotificationModule,
   ],
   controllers: [TicketStatusController],
   providers: [TicketStatusService],

@@ -14,20 +14,26 @@ import { TicketStatusHistoryModule } from 'src/ticket_status_history/ticket_stat
 import { TicketStatusService } from 'src/ticket_status/ticket_status.service';
 import { TicketStatusModule } from 'src/ticket_status/ticket_status.module';
 import { Satisfaction } from 'src/satisfaction/entities/satisfaction.entity';
+import { Users } from 'src/users/entities/user.entity';
+import { NotificationModule } from 'src/notification/notification.module';
+import { TicketAssigned } from 'src/ticket_assigned/entities/ticket_assigned.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Ticket,
+      Users,
       Satisfaction,
       TicketAttachment,
       TicketStatusHistory,
       TicketCategory,
       Project,
-      TicketStatus
+      TicketStatus,
+      TicketAssigned,
     ]),
     TicketStatusHistoryModule,
-    TicketStatusModule
+    TicketStatusModule,
+    NotificationModule,
   ],
   controllers: [TicketController, TicketAttachmentController],
   providers: [

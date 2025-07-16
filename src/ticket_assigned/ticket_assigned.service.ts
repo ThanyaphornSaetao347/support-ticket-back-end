@@ -6,6 +6,7 @@ import { Ticket } from 'src/ticket/entities/ticket.entity';
 import { Repository } from 'typeorm';
 import { TicketAssigned } from './entities/ticket_assigned.entity';
 import { Users } from 'src/users/entities/user.entity';
+import { NotificationService } from 'src/notification/notification.service';
 
 @Injectable()
 export class TicketAssignedService {
@@ -18,6 +19,8 @@ export class TicketAssignedService {
 
     @InjectRepository(Users)
     private readonly userRepo: Repository<Users>,
+
+    private readonly notiService: NotificationService,
   ){}
 
   async assignTicketByTicketNo(ticketNo: string, assignedTo: number, assignedBy: number) {
@@ -39,6 +42,15 @@ export class TicketAssignedService {
     });
 
     await this.assignRepo.save(assigned);
+
+    try {
+      console.log(`📧 Sending assignment notification for ticket ${ticket.id} to user ${assignedTo}`);
+      await this.notiService.createAssignmentNotification(ticket.id.toString(), assignedTo);
+      console.log(`✅ Assignment notification sent successfully`);
+    } catch (notificationError) {
+      // ไม่ให้ notification error กระทบ main operation
+      console.error('❌ Failed to send assignment notification:', notificationError);
+    }
 
     return {
       message: 'มอบหมายงานสำเร็จ',
