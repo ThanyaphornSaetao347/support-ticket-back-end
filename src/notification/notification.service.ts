@@ -4,10 +4,10 @@ import { UpdateNotificationDto } from './dto/update-notification.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
 import { Repository } from 'typeorm';
-import { Users } from 'src/users/entities/user.entity';
-import { Ticket } from 'src/ticket/entities/ticket.entity';
-import { TicketStatus } from 'src/ticket_status/entities/ticket_status.entity';
-import { TicketAssigned } from 'src/ticket_assigned/entities/ticket_assigned.entity';
+import { Users } from '../users/entities/user.entity';
+import { Ticket } from '../ticket/entities/ticket.entity';
+import { TicketStatus } from '../ticket_status/entities/ticket_status.entity';
+import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 import { MailerService } from '@nestjs-modules/mailer';
 
 @Injectable()

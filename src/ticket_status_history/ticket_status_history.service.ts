@@ -3,8 +3,9 @@ import { CreateTicketStatusHistoryDto } from './dto/create-ticket_status_history
 import { UpdateTicketStatusHistoryDto } from './dto/update-ticket_status_history.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { TicketStatusHistory } from './entities/ticket_status_history.entity';
-import { Ticket } from 'src/ticket/entities/ticket.entity'; // ✅ เพิ่ม import
+import { Ticket } from '../ticket/entities/ticket.entity'; // ✅ เพิ่ม import
 import { Repository, DataSource } from 'typeorm';
+import { Users } from '../users/entities/user.entity';
 
 @Injectable()
 export class TicketStatusHistoryService {
@@ -15,6 +16,9 @@ export class TicketStatusHistoryService {
     // ✅ เพิ่ม Ticket repository
     @InjectRepository(Ticket)
     private readonly ticketRepo: Repository<Ticket>,
+
+    @InjectRepository(Users)
+    private readonly userRepo: Repository<Users>,
     
     // ✅ เพิ่ม DataSource สำหรับ query ที่ซับซ้อน
     private readonly dataSource: DataSource,
@@ -77,23 +81,24 @@ export class TicketStatusHistoryService {
 
       console.log(`✅ Ticket found: ${ticket.ticket_no}`);
 
-      // ✅ ดึง history โดยใช้ raw query เพื่อให้ได้ข้อมูลครบถ้วน
-      const history = await this.dataSource.query(`
-        SELECT 
-          tsh.id,
-          tsh.ticket_id,
-          tsh.status_id,
-          tsh.create_by,
-          tsh.create_date,
-          COALESCE(tsl.name, CONCAT('Status ', tsh.status_id)) as status_name,
-          CONCAT(u.firstname, ' ', u.lastname) as created_by_name
-        FROM ticket_status_history tsh
-        LEFT JOIN ticket_status ts ON ts.id = tsh.status_id AND ts.isenabled = true
-        LEFT JOIN ticket_status_language tsl ON tsl.status_id = tsh.status_id AND tsl.language_id = 'th'
-        LEFT JOIN users u ON u.id = tsh.create_by
-        WHERE tsh.ticket_id = $1
-        ORDER BY tsh.create_date DESC
-      `, [ticketId]);
+      // ✅ ใช้ TypeORM QueryBuilder แทน raw query
+      const history = await this.historyRepo
+        .createQueryBuilder('tsh')
+        .leftJoinAndSelect('tsh.status', 'ts', 'ts.isenabled = :enabled', { enabled: true })
+        .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = ts.id AND tsl.language_id = :lang', { lang: 'th' })
+        .leftJoin('users', 'u', 'u.id = tsh.create_by')
+        .select([
+          'tsh.id',
+          'tsh.ticket_id', 
+          'tsh.status_id',
+          'tsh.create_by',
+          'tsh.create_date',
+          'COALESCE(tsl.name, CONCAT(\'Status \', tsh.status_id)) AS status_name',
+          'CONCAT(u.firstname, \' \', u.lastname) AS created_by_name'
+        ])
+        .where('tsh.ticket_id = :ticketId', { ticketId })
+        .orderBy('tsh.create_date', 'DESC')
+        .getRawMany();
 
       console.log(`✅ Found ${history.length} history records`);
       return history;
@@ -112,23 +117,26 @@ export class TicketStatusHistoryService {
     last_updated: Date;
   } | null> {
     try {
-      const result = await this.dataSource.query(`
-        SELECT 
-        tsh.id,
-        tsh.ticket_id,
-        tsh.status_id,
-        tsh.create_by,
-        tsh.create_date,
-        tsh.comment,
-        COALESCE(tsl.name, CONCAT('Status ', tsh.status_id)) as status_name,
-        CONCAT(COALESCE(u.firstname, ''), ' ', COALESCE(u.lastname, '')) as created_by_name,
-        u.email as created_by_email
-      FROM ticket_status_history tsh
-      LEFT JOIN ticket_status_language tsl ON tsl.status_id = tsh.status_id AND tsl.language_id = 'th'
-      LEFT JOIN users u ON u.id = tsh.create_by
-      WHERE tsh.ticket_id = $1
-      ORDER BY tsh.create_date ASC
-    `, [ticketId]);
+      const result = await this.historyRepo
+        .createQueryBuilder('tsh')
+        .select([
+          'tsh.id',
+          'tsh.ticket_id',
+          'tsh.status_id',
+          'tsh.create_by',
+          'tsh.create_date',
+          'tsh.comment',
+          `COALESCE(tsl.name, CONCAT('Status ', tsh.status_id)) as status_name`,
+          `CONCAT(COALESCE(u.firstname, ''), ' ', COALESCE(u.lastname, '')) as created_by_name`,
+          'u.email as created_by_email',
+        ])
+        .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = tsh.status_id AND tsl.language_id = :lang', {
+          lang: 'th',
+        })
+        .leftJoin('users', 'u', 'u.id = tsh.create_by')
+        .where('tsh.ticket_id = :ticketId', { ticketId })
+        .orderBy('tsh.create_date', 'ASC')
+        .getRawMany();
 
       return result.length > 0 ? result[0] : null;
     } catch (error) {
@@ -150,18 +158,21 @@ export class TicketStatusHistoryService {
       const currentStatus = await this.getCurrentTicketStatus(ticketId);
       
       // ดึง history ล่าสุด 5 รายการ
-      const recentHistory = await this.dataSource.query(`
-        SELECT 
-          tsh.id,
-          tsh.status_id,
-          tsh.create_date,
-          COALESCE(tsl.name, CONCAT('Status ', tsh.status_id)) as status_name
-        FROM ticket_status_history tsh
-        LEFT JOIN ticket_status_language tsl ON tsl.status_id = tsh.status_id AND tsl.language_id = 'th'
-        WHERE tsh.ticket_id = $1
-        ORDER BY tsh.create_date DESC
-        LIMIT 5
-      `, [ticketId]);
+      const recentHistory = await this.historyRepo
+        .createQueryBuilder('tsh')
+        .select([
+          'tsh.id',
+          'tsh.status_id',
+          'tsh.create_date',
+          `COALESCE(tsl.name, CONCAT('Status ', tsh.status_id)) AS status_name`,
+        ])
+        .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = tsh.status_id AND tsl.language_id = :lang', {
+          lang: 'th',
+        })
+        .where('tsh.ticket_id = :ticketId', { ticketId })
+        .orderBy('tsh.create_date', 'DESC')
+        .limit(5)
+        .getRawMany();
 
       // ตรวจสอบว่าสถานะใน ticket table ตรงกับ history ล่าสุดหรือไม่
       const latestHistoryStatus = recentHistory.length > 0 ? recentHistory[0].status_id : null;
@@ -263,13 +274,19 @@ export class TicketStatusHistoryService {
   async getStatusName(statusId: number): Promise<string> {
     try {
       // ✅ ดึงชื่อสถานะจาก database แทนการ hardcode
-      const result = await this.dataSource.query(`
-        SELECT COALESCE(tsl.name, ts.name, CONCAT('Status ', $1)) as name
-        FROM ticket_status ts
-        LEFT JOIN ticket_status_language tsl ON tsl.status_id = ts.id AND tsl.language_id = 'th'
-        WHERE ts.id = $1 AND ts.isenabled = true
-        LIMIT 1
-      `, [statusId]);
+      const result = await this.historyRepo
+        .createQueryBuilder('ts')
+        .select([
+          `COALESCE(tsl.name, ts.name, CONCAT('Status ', :statusId)) AS name`,
+        ])
+        .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = ts.id AND tsl.language_id = :lang', {
+          lang: 'th',
+        })
+        .where('ts.id = :statusId', { statusId })
+        .andWhere('ts.isenabled = true')
+        .limit(1)
+        .setParameters({ statusId }) // เพิ่มเติมเพื่อความชัดเจนใน CONCAT
+        .getRawOne();
 
       return result.length > 0 ? result[0].name : `Status ${statusId}`;
     } catch (error) {
@@ -280,12 +297,14 @@ export class TicketStatusHistoryService {
 
   async getUserName(userId: number): Promise<string> {
     try {
-      const result = await this.dataSource.query(`
-        SELECT CONCAT(firstname, ' ', lastname) as name
-        FROM users
-        WHERE id = $1
-        LIMIT 1
-      `, [userId]);
+      const result = await this.userRepo
+        .createQueryBuilder('u')
+        .select([
+          `CONCAT(u.firstname, ' ', u.lastname) AS name`,
+        ])
+        .where('u.id = :userId', { userId })
+        .limit(1)
+        .getRawOne();
 
       return result.length > 0 ? result[0].name : `User ${userId}`;
     } catch (error) {

@@ -1,6 +1,6 @@
-import { Ticket } from "src/ticket/entities/ticket.entity";
-import { TicketStatusHistory } from "src/ticket_status_history/entities/ticket_status_history.entity";
-import { TicketStatusLanguage } from "src/ticket_status_language/entities/ticket_status_language.entity";
+import { Ticket } from "../../ticket/entities/ticket.entity";
+import { TicketStatusHistory } from "../../ticket_status_history/entities/ticket_status_history.entity";
+import { TicketStatusLanguage } from "../../ticket_status_language/entities/ticket_status_language.entity";
 import { Column, Entity, JoinColumn, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity({ name: 'ticket_status'})

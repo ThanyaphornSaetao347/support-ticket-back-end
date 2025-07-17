@@ -2,11 +2,11 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { CreateTicketAssignedDto } from './dto/create-ticket_assigned.dto';
 import { UpdateTicketAssignedDto } from './dto/update-ticket_assigned.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Ticket } from 'src/ticket/entities/ticket.entity';
+import { Ticket } from '../ticket/entities/ticket.entity';
 import { Repository } from 'typeorm';
 import { TicketAssigned } from './entities/ticket_assigned.entity';
-import { Users } from 'src/users/entities/user.entity';
-import { NotificationService } from 'src/notification/notification.service';
+import { Users } from '../users/entities/user.entity';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class TicketAssignedService {

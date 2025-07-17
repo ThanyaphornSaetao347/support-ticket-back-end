@@ -12,7 +12,7 @@ import {
 import { TicketStatusService } from './ticket_status.service';
 import { CreateTicketStatusDto } from './dto/create-ticket_status.dto';
 import { UpdateTicketStatusDto } from './dto/update-ticket_status.dto';
-import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
+import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 
 @Controller('api')
 export class TicketStatusController {

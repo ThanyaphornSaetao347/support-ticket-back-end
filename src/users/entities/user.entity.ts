@@ -1,6 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne } from "typeorm";
-import { CustomerForProject } from "src/customer_for_project/entities/customer-for-project.entity";
-import { MasterRole } from "src/master_role/entities/master_role.entity";
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToMany, JoinTable, ManyToOne } from "typeorm";
+import { CustomerForProject } from "../../customer_for_project/entities/customer-for-project.entity";
+import { MasterRole } from "../../master_role/entities/master_role.entity";
+import { UserAllowRole } from "../../user_allow_role/entities/user_allow_role.entity";
 
 @Entity({name: 'users'})
 export class Users {
@@ -50,6 +51,16 @@ export class Users {
   @OneToMany(() => CustomerForProject, customerProject => customerProject.users)
   customerProjects: CustomerForProject[];
 
-  @ManyToOne(() => MasterRole, masterRole => masterRole.userAllowRole)
-  role: MasterRole;
+  @ManyToMany(() => MasterRole, (role) => role.userAllowRole)
+  @JoinTable({
+    name: 'users_allow_role', // ชื่อ table กลาง
+    joinColumn: { name: 'user_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'role_id', referencedColumnName: 'id' }
+  })
+  role: MasterRole[];
+
+  @OneToMany(() => UserAllowRole, (uar) => uar.user)
+  userAllowRoles: UserAllowRole[];
+
+  
 }

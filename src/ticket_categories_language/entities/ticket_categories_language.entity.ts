@@ -1,6 +1,6 @@
 
-// src/ticket-categories-language/entities/ticket-categories-language.entity.ts
-import { TicketCategory } from 'src/ticket_categories/entities/ticket_category.entity';
+// ../../ticket-categories-language/entities/ticket-categories-language.entity.ts
+import { TicketCategory } from '../../ticket_categories/entities/ticket_category.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,

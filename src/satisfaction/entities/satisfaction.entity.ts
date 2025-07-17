@@ -1,4 +1,4 @@
-import { Ticket } from "src/ticket/entities/ticket.entity";
+import { Ticket } from "../../ticket/entities/ticket.entity";
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity('ticket_satisfaction')

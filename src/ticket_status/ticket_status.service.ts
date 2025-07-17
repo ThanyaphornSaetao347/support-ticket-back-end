@@ -3,12 +3,12 @@ import { CreateTicketStatusDto } from './dto/create-ticket_status.dto';
 import { UpdateTicketStatusDto } from './dto/update-ticket_status.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { TicketStatus } from './entities/ticket_status.entity';
-import { Ticket } from 'src/ticket/entities/ticket.entity';
+import { Ticket } from '../ticket/entities/ticket.entity';
 import { DataSource, Repository } from 'typeorm';
-import { TicketStatusLanguage } from 'src/ticket_status_language/entities/ticket_status_language.entity';
-import { TicketStatusHistoryService } from 'src/ticket_status_history/ticket_status_history.service';
-import { Notification } from 'src/notification/entities/notification.entity';
-import { NotificationService } from 'src/notification/notification.service';
+import { TicketStatusLanguage } from '../ticket_status_language/entities/ticket_status_language.entity';
+import { TicketStatusHistoryService } from '../ticket_status_history/ticket_status_history.service';
+import { Notification } from '../notification/entities/notification.entity';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class TicketStatusService {

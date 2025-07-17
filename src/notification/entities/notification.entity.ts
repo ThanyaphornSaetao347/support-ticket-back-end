@@ -1,6 +1,6 @@
-import { Ticket } from "src/ticket/entities/ticket.entity";
-import { TicketStatus } from "src/ticket_status/entities/ticket_status.entity";
-import { Users } from "src/users/entities/user.entity";
+import { Ticket } from "../../ticket/entities/ticket.entity";
+import { TicketStatus } from "../../ticket_status/entities/ticket_status.entity";
+import { Users } from "../../users/entities/user.entity";
 import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from "typeorm";
 
 export enum NotificationType{

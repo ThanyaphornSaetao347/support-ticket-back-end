@@ -8,7 +8,7 @@ import {
   } from 'typeorm';
 import { Users } from '../../users/entities/user.entity';
 import { Project } from '../../project/entities/project.entity';
-import { Customer } from 'src/customer/entities/customer.entity';
+import { Customer } from '../../customer/entities/customer.entity';
 
 @Entity('customer_for_project')
 export class CustomerForProject {

@@ -17,7 +17,7 @@ import {
 import { TicketStatusHistoryService } from './ticket_status_history.service';
 import { CreateTicketStatusHistoryDto } from './dto/create-ticket_status_history.dto';
 import { UpdateTicketStatusHistoryDto } from './dto/update-ticket_status_history.dto';
-import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
+import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 
 @Controller('api')
 export class TicketStatusHistoryController {

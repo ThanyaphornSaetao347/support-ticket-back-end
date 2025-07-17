@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TicketCategory } from './entities/ticket_category.entity';
-import { TicketCategoryLanguage } from 'src/ticket_categories_language/entities/ticket_categories_language.entity';
+import { TicketCategoryLanguage } from '../ticket_categories_language/entities/ticket_categories_language.entity';
 import { CreateCategoryDto } from './dto/create-ticket_category.dto';
 
 @Injectable()

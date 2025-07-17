@@ -4,21 +4,21 @@ import { DataSource, LessThan, Repository, MoreThan, FindManyOptions } from 'typ
 import { Ticket } from './entities/ticket.entity';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
-import { TicketStatusHistory } from 'src/ticket_status_history/entities/ticket_status_history.entity';
-import { TicketAttachment } from 'src/ticket_attachment/entities/ticket_attachment.entity';
-import { TicketCategory } from 'src/ticket_categories/entities/ticket_category.entity';
-import { AttachmentService } from 'src/ticket_attachment/ticket_attachment.service';
-import { TicketStatus } from 'src/ticket_status/entities/ticket_status.entity';
-import { TicketStatusHistoryService } from 'src/ticket_status_history/ticket_status_history.service';
-import { TicketStatusLanguage } from 'src/ticket_status_language/entities/ticket_status_language.entity';
-import { CreateTicketStatusDto } from 'src/ticket_status/dto/create-ticket_status.dto';
-import { CreateSatisfactionDto } from 'src/satisfaction/dto/create-satisfaction.dto';
-import { Satisfaction } from 'src/satisfaction/entities/satisfaction.entity';
-import { NotificationService } from 'src/notification/notification.service';
+import { TicketStatusHistory } from '../ticket_status_history/entities/ticket_status_history.entity';
+import { TicketAttachment } from '../ticket_attachment/entities/ticket_attachment.entity';
+import { TicketCategory } from '../ticket_categories/entities/ticket_category.entity';
+import { AttachmentService } from '../ticket_attachment/ticket_attachment.service';
+import { TicketStatus } from '../ticket_status/entities/ticket_status.entity';
+import { TicketStatusHistoryService } from '../ticket_status_history/ticket_status_history.service';
+import { TicketStatusLanguage } from '../ticket_status_language/entities/ticket_status_language.entity';
+import { CreateTicketStatusDto } from '../ticket_status/dto/create-ticket_status.dto';
+import { CreateSatisfactionDto } from '../satisfaction/dto/create-satisfaction.dto';
+import { Satisfaction } from '../satisfaction/entities/satisfaction.entity';
+import { NotificationService } from '../notification/notification.service';
 import { privateDecrypt } from 'crypto';
-import { NotificationType } from 'src/notification/entities/notification.entity';
-import { Users } from 'src/users/entities/user.entity';
-import { TicketAssigned } from 'src/ticket_assigned/entities/ticket_assigned.entity';
+import { NotificationType } from '../notification/entities/notification.entity';
+import { Users } from '../users/entities/user.entity';
+import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 
 @Injectable()
 export class TicketService {
@@ -847,7 +847,7 @@ export class TicketService {
     const similarTickets = await this.ticketRepo.find({
       where: { 
         categories_id: ticket.categories_id,
-        status_id: 3 // สมมติว่า 3 = completed
+        status_id: 5 // สมมติว่า 5 = completed
       },
       take: 10
     });

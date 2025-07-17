@@ -2,8 +2,8 @@ import { Controller, Request, Get, Post, Body, Patch, Param, Delete, Put, UseGua
 import { TicketAssignedService } from './ticket_assigned.service';
 import { CreateTicketAssignedDto } from './dto/create-ticket_assigned.dto';
 import { UpdateTicketAssignedDto } from './dto/update-ticket_assigned.dto';
-import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
-import { UserAllowRole } from 'src/user_allow_role/entities/user_allow_role.entity';
+import { JwtAuthGuard } from '../auth/jwt_auth.guard';
+import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 

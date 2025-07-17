@@ -1,5 +1,5 @@
 import { Controller, Post, Get, UseGuards, Request, Param, ParseIntPipe, Body } from '@nestjs/common';
-import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
+import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 import { ProjectService } from './project.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 

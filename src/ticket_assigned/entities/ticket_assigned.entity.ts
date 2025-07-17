@@ -1,6 +1,6 @@
 import { Column, Entity, PrimaryColumn, ManyToOne, JoinColumn } from "typeorm";
-import { Ticket } from "src/ticket/entities/ticket.entity";
-import { Users } from "src/users/entities/user.entity";
+import { Ticket } from "../../ticket/entities/ticket.entity";
+import { Users } from "../../users/entities/user.entity";
 
 @Entity('ticket_assigned')
 export class TicketAssigned {

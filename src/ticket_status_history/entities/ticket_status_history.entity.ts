@@ -1,5 +1,5 @@
-import { Ticket } from "src/ticket/entities/ticket.entity";
-import { TicketStatus } from "src/ticket_status/entities/ticket_status.entity";
+import { Ticket } from "../../ticket/entities/ticket.entity";
+import { TicketStatus } from "../../ticket_status/entities/ticket_status.entity";
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity({ name: 'ticket_status_history'})

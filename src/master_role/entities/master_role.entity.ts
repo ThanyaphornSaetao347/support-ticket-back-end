@@ -1,6 +1,6 @@
-import { UserAllowRole } from "src/user_allow_role/entities/user_allow_role.entity";
-import { Users } from "src/users/entities/user.entity";
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { UserAllowRole } from "../../user_allow_role/entities/user_allow_role.entity";
+import { Users } from "../../users/entities/user.entity";
+import { Column, Entity, PrimaryGeneratedColumn, ManyToMany, OneToMany } from "typeorm";
 
 @Entity('master_role')
 export class MasterRole {
@@ -13,6 +13,6 @@ export class MasterRole {
     @OneToMany(() => UserAllowRole, userRole => userRole.role)
     userRole: UserAllowRole[];
 
-    @OneToMany(() => Users, user => user.role)
+    @ManyToMany(() => Users, user => user.role)
     userAllowRole: Users[];
 }

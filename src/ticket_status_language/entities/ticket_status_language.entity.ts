@@ -6,7 +6,7 @@ import {
     ManyToOne,
     JoinColumn
  } from "typeorm";
- import { TicketStatus } from "src/ticket_status/entities/ticket_status.entity";
+ import { TicketStatus } from "../../ticket_status/entities/ticket_status.entity";
 
 @Entity({ name: 'ticket_status_language'})
 export class TicketStatusLanguage {

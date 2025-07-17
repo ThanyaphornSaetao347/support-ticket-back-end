@@ -20,11 +20,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import { Response } from 'express';
-import { TicketService } from 'src/ticket/ticket.service';
+import { TicketService } from '../ticket/ticket.service';
 import { AttachmentService } from './ticket_attachment.service';
-import { Users } from 'src/users/entities/user.entity';
+import { Users } from '../users/entities/user.entity';
 import { AuthGuard } from '@nestjs/passport';
-import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
+import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 
 const readFile = promisify(fs.readFile);
 const stat = promisify(fs.stat);

@@ -3,11 +3,11 @@ import { NotificationService } from './notification.service';
 import { NotificationController } from './notification.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Notification } from './entities/notification.entity';
-import { Ticket } from 'src/ticket/entities/ticket.entity';
-import { Users } from 'src/users/entities/user.entity';
+import { Ticket } from '../ticket/entities/ticket.entity';
+import { Users } from '../users/entities/user.entity';
 import { MailerModule } from '@nestjs-modules/mailer';
-import { TicketStatus } from 'src/ticket_status/entities/ticket_status.entity';
-import { TicketAssigned } from 'src/ticket_assigned/entities/ticket_assigned.entity';
+import { TicketStatus } from '../ticket_status/entities/ticket_status.entity';
+import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 
 @Module({
   imports: [

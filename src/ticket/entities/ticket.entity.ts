@@ -1,11 +1,11 @@
 // src/entities/ticket.entity.ts
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToOne } from 'typeorm';
 import { TicketAttachment } from '../../ticket_attachment/entities/ticket_attachment.entity';
-import { TicketStatusHistory } from 'src/ticket_status_history/entities/ticket_status_history.entity';
-import { TicketCategory } from 'src/ticket_categories/entities/ticket_category.entity';
-import { Project } from 'src/project/entities/project.entity';
-import { TicketStatus } from 'src/ticket_status/entities/ticket_status.entity';
-import { Satisfaction } from 'src/satisfaction/entities/satisfaction.entity';
+import { TicketStatusHistory } from '../../ticket_status_history/entities/ticket_status_history.entity';
+import { TicketCategory } from '../../ticket_categories/entities/ticket_category.entity';
+import { Project } from '../../project/entities/project.entity';
+import { TicketStatus } from '../../ticket_status/entities/ticket_status.entity';
+import { Satisfaction } from '../../satisfaction/entities/satisfaction.entity';
 
 @Entity('ticket')
 export class Ticket {

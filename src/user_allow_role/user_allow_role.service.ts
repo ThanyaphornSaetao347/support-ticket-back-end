@@ -4,7 +4,7 @@ import { UpdateUserAllowRoleDto } from './dto/update-user_allow_role.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserAllowRole } from './entities/user_allow_role.entity';
 import { Repository, In } from 'typeorm';
-import { MasterRole } from 'src/master_role/entities/master_role.entity';
+import { MasterRole } from '../master_role/entities/master_role.entity';
 
 @Injectable()
 export class UserAllowRoleService {

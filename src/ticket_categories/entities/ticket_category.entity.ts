@@ -1,5 +1,5 @@
-import { Ticket } from 'src/ticket/entities/ticket.entity';
-import { TicketCategoryLanguage } from 'src/ticket_categories_language/entities/ticket_categories_language.entity';
+import { Ticket } from '../../ticket/entities/ticket.entity';
+import { TicketCategoryLanguage } from '../../ticket_categories_language/entities/ticket_categories_language.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,

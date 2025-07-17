@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { UserAllowRoleService } from './user_allow_role.service';
 import { CreateUserAllowRoleDto } from './dto/create-user_allow_role.dto';
-import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
+import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 
 @Controller()
 export class UserAllowRoleController {

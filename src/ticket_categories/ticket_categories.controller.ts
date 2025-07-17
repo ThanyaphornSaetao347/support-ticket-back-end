@@ -1,7 +1,7 @@
 import { Controller, Post, Body, UseGuards, Get, Put, Delete, Param, ParseIntPipe, Request } from '@nestjs/common';
 import { TicketCategoryService } from './ticket_categories.service';
 import { CreateCategoryDto } from './dto/create-ticket_category.dto';
-import { JwtAuthGuard } from 'src/auth/jwt_auth.guard';
+import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 
 @Controller('api')
 export class TicketCategoryController {

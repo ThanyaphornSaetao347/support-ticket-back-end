@@ -2,11 +2,11 @@ import { Module } from '@nestjs/common';
 import { TicketAssignedService } from './ticket_assigned.service';
 import { TicketAssignedController } from './ticket_assigned.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { UserAllowRole } from 'src/user_allow_role/entities/user_allow_role.entity';
-import { Ticket } from 'src/ticket/entities/ticket.entity';
+import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
+import { Ticket } from '../ticket/entities/ticket.entity';
 import { TicketAssigned } from './entities/ticket_assigned.entity';
-import { Users } from 'src/users/entities/user.entity';
-import { NotificationModule } from 'src/notification/notification.module';
+import { Users } from '../users/entities/user.entity';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
