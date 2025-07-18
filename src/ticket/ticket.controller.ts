@@ -36,6 +36,8 @@ import { NotificationService } from '../notification/notification.service';
 import { data } from 'jquery';
 import { identity } from 'rxjs';
 import { permissionEnum } from '../permission'
+import { ROLES } from '../permission/permission.service';
+import { requirePermissions, RequireRoles } from 'src/permission/permission.decorator';
 
 
 @Controller('api')
@@ -422,6 +424,7 @@ export class TicketController {
   
   @UseGuards(JwtAuthGuard)
   @Post('saveTicket')
+  @requirePermissions(permissionEnum.CREATE_TICKET)
   async saveTicket(@Body() dto: any, @Request() req: any): Promise<any> {
     console.log('Request body received:', dto);
     console.log('Request user object:', req.user);
@@ -440,11 +443,6 @@ export class TicketController {
         message: 'User not authenticated properly',
         data: null,
       };
-    }
-
-    // ✅ เพิ่มการตรวจสอบสิทธิ์ CREATE_TICKET
-    if (!await this.checkPermission(userId, [permissionEnum.CREATE_TICKET])) {
-      throw new ForbiddenException('ไม่มีสิทธิ์ในการสร้างตั๋วปัญหา');
     }
 
     // Validate request body
@@ -512,6 +510,7 @@ export class TicketController {
   // ✅ แก้ไข getTicketData ให้ใช้ ticket_no แทน ticket_id
   @UseGuards(JwtAuthGuard)
   @Post('getTicketData')
+  @requirePermissions(permissionEnum.TRACK_TICKET, permissionEnum.VIEW_OWN_TICKETS, permissionEnum.VIEW_ALL_TICKETS)
   async getTicketData(@Body() body: { ticket_no: string }, @Req() req: any) {
     try {
       console.log('🎫 === getTicketData Debug Start ===');
@@ -560,12 +559,10 @@ export class TicketController {
         };
       }
 
-      // ✅ ตรวจสอบการเข้าถึง พร้อม debug
-      console.log('🔐 Checking access for userId:', userId, 'ticketNo:', ticketNo);
-      const canAccess = await this.canViewAllTicket(userId, ticketNo);
-      console.log('Access result:', canAccess);
-      
-      if (!canAccess) {
+      // check user is owner?
+      const isOwner = await this.isTicketOwnerByNo(userId, ticketNo);
+      if (!isOwner) {
+        // if not must have view all
         return {
           code: 2,
           message: 'ไม่มีสิทธิ์ในการดูตั๋วปัญหานี้',
@@ -604,6 +601,7 @@ export class TicketController {
 
   @Post('getAllTicket')
   @UseGuards(JwtAuthGuard)
+  @requirePermissions(permissionEnum.VIEW_ALL_TICKETS, permissionEnum.VIEW_OWN_TICKETS)
   async getAllTicket(@Request() req: any) {
     try {
       const userId = req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub;
@@ -614,12 +612,8 @@ export class TicketController {
         };
       }
 
-      const canViewAll = await this.checkPermission(userId, [permissionEnum.VIEW_ALL_TICKETS]);
-      const canViewOwn = await this.checkPermission(userId, [permissionEnum.VIEW_OWN_TICKETS]);
-
-      if (!canViewAll && !canViewOwn) {
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการดูรายการตั๋ว');
-      }
+      const userPermissions = await this.ticketService.checkUserPermissions(userId);
+      const canViewAll = userPermissions.includes(permissionEnum.VIEW_ALL_TICKETS);
 
       let tickets;
       if (canViewAll) {
@@ -648,6 +642,7 @@ export class TicketController {
 
   @UseGuards(JwtAuthGuard)
   @Post('saveSupporter/:ticket_no')
+  @requirePermissions(permissionEnum.SOLVE_PROBLEM)
   @UseInterceptors(FilesInterceptor('attachments'))
   async saveSupporter(
     @Param('ticket_no') ticketNo: string,
@@ -657,11 +652,6 @@ export class TicketController {
   ){
     try {
       const userId = req.user.id;
-
-      // ✅ เพิ่มการตรวจสอบสิทธิ์ SOLVE_PROBLEM
-      if (!await this.checkPermission(userId, [permissionEnum.SOLVE_PROBLEM])) {
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการแก้ไขปัญหา');
-      }
 
       const result = await this.ticketService.saveSupporter(
         ticketNo,
@@ -689,6 +679,11 @@ export class TicketController {
 
   @UseGuards(JwtAuthGuard)
   @Post('getAllMasterFilter')
+  @requirePermissions(
+    permissionEnum.VIEW_ALL_TICKETS,
+    permissionEnum.VIEW_OWN_TICKETS,
+    permissionEnum.TRACK_TICKET
+  )
   async getAllMAsterFilter(@Req() req) {
     try {
       console.log('📋 === getAllMasterFilter Debug ===');
@@ -698,18 +693,6 @@ export class TicketController {
 
       if (!userId) {
         throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
-      }
-
-      // ✅ รวมค่าของทุก permission
-      const allPermissions = Object.values(permissionEnum).filter(v => typeof v === 'number') as permissionEnum[];
-      console.log('🔒 Checking permissions:', allPermissions);
-
-      const hasAnyPermission = await this.checkPermission(userId, allPermissions);
-
-      console.log('🔒 Has any permission:', hasAnyPermission);
-
-      if (!hasAnyPermission) {
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการดูข้อมูล');
       }
 
       // ✅ ดึงข้อมูล Master Filter
@@ -731,14 +714,9 @@ export class TicketController {
   // ✅ Specific ticket routes (with "ticket" prefix) come BEFORE generic :id route
   @Get('tickets/:ticket_no')
   @UseGuards(JwtAuthGuard)
+  @requirePermissions(permissionEnum.TRACK_TICKET, permissionEnum.VIEW_ALL_TICKETS, permissionEnum.TRACK_TICKET)
   async getTicketByNo(@Param('ticket_no') ticket_no: string, @Req() req: any) {
     try {
-      // ✅ เพิ่มการตรวจสอบสิทธิ์ TRACK_TICKET
-      const userId = this.extractUserId(req);
-      if (!await this.checkPermission(userId!, [permissionEnum.TRACK_TICKET])) {
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการดูตั๋วปัญหา');
-      }
-
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const data = await this.ticketService.getTicketData(ticket_no, baseUrl);
 
@@ -759,6 +737,7 @@ export class TicketController {
 
   @Put('tickets/:ticket_no')
   @UseGuards(JwtAuthGuard)
+  @requirePermissions(permissionEnum.EDIT_TICKET)
   async updateTicketByNo(
     @Param('ticket_no') ticket_no: string,
     @Body() updateDto: UpdateTicketDto,
@@ -773,11 +752,6 @@ export class TicketController {
           message: 'User not authenticated',
           data: null,
         };
-      }
-
-      // ✅ เพิ่มการตรวจสอบสิทธิ์ EDIT_TICKET
-      if (!await this.checkPermission(userId, [permissionEnum.EDIT_TICKET])) {
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการแก้ไขตั๋วปัญหา');
       }
 
       const ticket = await this.ticketService.updateTicket(ticket_no, updateDto, userId);
@@ -799,6 +773,7 @@ export class TicketController {
 
   @UseGuards(JwtAuthGuard)
   @Patch('updateTicketStatus/:id')
+  @requirePermissions(permissionEnum.CHANGE_STATUS)
   @ApiOperation({ summary: 'Update ticket status and log history' })
   @ApiParam({ name: 'id', description: 'Ticket ID' })
   @ApiResponse({ status: 200, description: 'Ticket status updated successfully' })
@@ -818,11 +793,6 @@ export class TicketController {
       const userId = this.extractUserId(req);
       if (!userId) {
         throw new HttpException('User not authenticated properly', HttpStatus.UNAUTHORIZED);
-      }
-
-      // ✅ เพิ่มการตรวจสอบสิทธิ์ CHANGE_STATUS
-      if (!await this.checkPermission(userId, [permissionEnum.CHANGE_STATUS])) {
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการเปลี่ยนสถานะตั๋วปัญหา');
       }
 
       // ✅ Validate input
@@ -860,6 +830,7 @@ export class TicketController {
 
   // ✅ ลบตั๋วด้วย ticket_no
   @Delete('tickets/:ticket_no')
+  @requirePermissions(permissionEnum.DELETE_TICKET)
   @UseGuards(JwtAuthGuard)
   async deleteTicketByNo(
     @Param('ticket_no') ticket_no: string,
@@ -880,24 +851,6 @@ export class TicketController {
       }
 
       console.log(`👤 User ID: ${userId}`);
-
-      // ✅ ตรวจสอบสิทธิ์
-      const hasPermission = await this.checkPermission(userId, [permissionEnum.DELETE_TICKET]);
-      console.log(`🔒 Delete permission: ${hasPermission}`);
-      
-      if (!hasPermission) {
-        console.log('❌ Permission denied');
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการลบตั๋วปัญหา');
-      }
-
-      // ✅ ตรวจสอบว่าเป็นเจ้าของตั๋วหรือไม่
-      const canDelete = await this.canDeleteTicket(userId, ticket_no);
-      console.log(`👤 Can delete ticket: ${canDelete}`);
-      
-      if (!canDelete) {
-        console.log('❌ Not ticket owner or no permission');
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการลบตั๋วนี้ (ไม่ใช่เจ้าของหรือไม่มีสิทธิ์)');
-      }
 
       console.log('✅ Proceeding with soft delete...');
       await this.ticketService.softDeleteTicket(ticket_no, userId);
@@ -934,6 +887,7 @@ export class TicketController {
   // ✅ กู้คืนตั๋ว
   @Post('tickets/restore/:ticket_no')
   @UseGuards(JwtAuthGuard)
+  @requirePermissions(permissionEnum.RESTORE_TICKET)
   async restoreTicketByNo(
     @Param('ticket_no') ticket_no: string,
     @Request() req: any
@@ -949,11 +903,6 @@ export class TicketController {
           message: 'User not authenticated',
           data: null,
         };
-      }
-
-      // ✅ ตรวจสอบสิทธิ์
-      if (!await this.checkPermission(userId, [permissionEnum.RESTORE_TICKET])) {
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการกู้คืนตั๋วปัญหา');
       }
 
       await this.ticketService.restoreTicketByNo(ticket_no, userId);
@@ -990,14 +939,11 @@ export class TicketController {
   // ✅ ดูรายการตั๋วที่ถูกลบ (สำหรับ admin)
   @Get('tickets/deleted')
   @UseGuards(JwtAuthGuard)
+  @requirePermissions(permissionEnum.VIEW_ALL_TICKETS)
+  @RequireRoles(ROLES.ADMIN, ROLES.SUPPORTER)
   async softDeleteTicket(@Request() req: any) {
     try {
       const userId = this.extractUserId(req);
-      
-      // ✅ ตรวจสอบสิทธิ์ admin
-      if (!await this.checkPermission(userId!, [permissionEnum.VIEW_ALL_TICKETS])) {
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการดูตั๋วที่ถูกลบ');
-      }
 
       const deletedTickets = await this.ticketService.getDeletedTickets();
       
@@ -1062,6 +1008,7 @@ export class TicketController {
   @Post('satisfaction/:ticket_no')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
+  @requirePermissions(permissionEnum.SATISFACTION)
   async saveSatisfaction(
     @Param('ticket_no') ticketNo: string,
     @Body() createSatisfactionDto: CreateSatisfactionDto,
@@ -1069,11 +1016,6 @@ export class TicketController {
   ) {
     try {
       const userId = req.user?.id;
-
-      // ✅ เพิ่มการตรวจสอบสิทธิ์ TRACK_TICKET (ให้ user ที่มีสิทธิ์ดูตั๋วสามารถให้คะแนนได้)
-      if (!await this.checkPermission(userId, [permissionEnum.TRACK_TICKET])) {
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการประเมินความพึงพอใจ');
-      }
 
       const result = await this.ticketService.saveSatisfaction(
         ticketNo,
@@ -1101,6 +1043,7 @@ export class TicketController {
   // ตรวจสอบสิทธิ์เฉพาะ
   @Post('check-permission')
   @UseGuards(JwtAuthGuard)
+  @requirePermissions(permissionEnum.VIEW_ALL_TICKETS)
   async checkSpecificPermission(@Body() body: { permissions: number[] }, @Request() req: any) {
     try {
       const userId = this.extractUserId(req);
@@ -1182,6 +1125,7 @@ export class TicketController {
 
   @UseGuards(JwtAuthGuard)
   @Get(':id/status')
+  @requirePermissions(permissionEnum.TRACK_TICKET, permissionEnum.VIEW_ALL_TICKETS, permissionEnum.VIEW_OWN_TICKETS)
   async getTicketStatus(
     @Param('id', ParseIntPipe) ticketId: number,
     @Req() req: any
@@ -1198,15 +1142,6 @@ export class TicketController {
       if (!userId) {
         console.log('❌ User ID extraction failed');
         throw new UnauthorizedException('Cannot extract user information from token');
-      }
-      
-      console.log('🔒 Starting permission check...');
-      const hasPermission = await this.checkPermission(userId, [permissionEnum.TRACK_TICKET]);
-      console.log('🔒 Permission check result:', hasPermission);
-      
-      if (!hasPermission) {
-        console.log('❌ Permission denied');
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการดูสถานะตั๋วปัญหา');
       }
 
       const languageId = this.getLanguage(req);
@@ -1432,6 +1367,7 @@ export class TicketController {
   // ✅ Get ticket notifications with proper validation
   @UseGuards(JwtAuthGuard)
   @Get('notification/:ticket_no')
+  @requirePermissions(permissionEnum.TRACK_TICKET, permissionEnum.VIEW_ALL_TICKETS, permissionEnum.VIEW_OWN_TICKETS)
   async getTicketNotifications(
     @Param('ticket_no') ticket_no: string,
     @Req() req: any,

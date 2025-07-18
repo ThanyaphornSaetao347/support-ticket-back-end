@@ -13,4 +13,6 @@ export enum  permissionEnum {
     VIEW_OWN_TICKETS = 12,      // ✅ ดูตั๋วทั้งหมดที่ตัวเองสร้าง
     VIEW_ALL_TICKETS = 13,      // ดูตั๋วทั้งหมด
     SATISFACTION = 14,          // ประเมินความพึงพอใจ
+    ADD_USER = 15,              // เพิ่มผู้ใช้
+    DEL_USER = 16               // ลบผู้ใช้
   };

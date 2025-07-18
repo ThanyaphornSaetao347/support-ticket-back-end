@@ -4,6 +4,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Request } from 'express';
 import { AuthGuard } from '@nestjs/passport';
+import { permissionEnum } from 'src/permission';
 
 @Controller('users')
 export class UserController {
@@ -15,6 +16,9 @@ export class UserController {
     try {
       // ดึง user_id จาก JWT token
       const userId = req.user && req.user['id'] ? req.user['id'] : null;
+
+      // check permission is admin?
+      
       
       // เพิ่ม create_by และ update_by จาก user_id ที่ login
       createUserDto.create_by = userId;
