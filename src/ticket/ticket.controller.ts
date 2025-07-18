@@ -37,7 +37,7 @@ import { data } from 'jquery';
 import { identity } from 'rxjs';
 import { permissionEnum } from '../permission'
 import { ROLES } from '../permission/permission.service';
-import { requirePermissions, RequireRoles } from 'src/permission/permission.decorator';
+import { requirePermissions, RequireRoles } from '../permission/permission.decorator';
 
 
 @Controller('api')

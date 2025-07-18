@@ -3,7 +3,7 @@ import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { MasterRole } from '../master_role/entities/master_role.entity';
 import { permissionEnum } from '../permission';
 
