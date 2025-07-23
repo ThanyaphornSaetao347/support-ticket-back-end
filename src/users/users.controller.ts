@@ -4,7 +4,8 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Request } from 'express';
 import { AuthGuard } from '@nestjs/passport';
-import { permissionEnum } from 'src/permission';
+import { permissionEnum } from '../permission';
+import { requirePermissions } from '../permission/permission.decorator';
 
 @Controller('users')
 export class UserController {
@@ -12,6 +13,7 @@ export class UserController {
 
   @Post()
   @UseGuards(AuthGuard('jwt')) // เพิ่ม JWT Guard สำหรับการสร้างผู้ใช้ใหม่
+  @requirePermissions(permissionEnum.ADD_USER)
   async create(@Body() createUserDto: CreateUserDto, @Req() req: Request) {
     try {
       // ดึง user_id จาก JWT token

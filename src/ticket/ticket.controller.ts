@@ -511,6 +511,7 @@ export class TicketController {
   @UseGuards(JwtAuthGuard)
   @Post('getTicketData')
   @requirePermissions(permissionEnum.TRACK_TICKET, permissionEnum.VIEW_OWN_TICKETS, permissionEnum.VIEW_ALL_TICKETS)
+  @RequireRoles(ROLES.ADMIN, ROLES.SUPPORTER, ROLES.USER)
   async getTicketData(@Body() body: { ticket_no: string }, @Req() req: any) {
     try {
       console.log('🎫 === getTicketData Debug Start ===');

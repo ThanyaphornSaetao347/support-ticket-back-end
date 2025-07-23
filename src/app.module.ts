@@ -36,7 +36,7 @@ import { SatisfactionModule } from './satisfaction/satisfaction.module';
 import { Satisfaction } from './satisfaction/entities/satisfaction.entity';
 import { Notification } from './notification/entities/notification.entity';
 import { NotificationModule } from './notification/notification.module';
-// import { PermissionModule } from './permission/permission.module';
+import { PermissionModule } from './permission/permission.module';
 
 
 @Module({
@@ -88,7 +88,7 @@ import { NotificationModule } from './notification/notification.module';
     TicketAssignedModule,
     SatisfactionModule,
     NotificationModule,
-    // PermissionModule
+    PermissionModule
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -19,6 +19,7 @@ import { privateDecrypt } from 'crypto';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { Users } from '../users/entities/user.entity';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
+import { Project } from 'src/project/entities/project.entity';
 
 @Injectable()
 export class TicketService {
@@ -33,6 +34,8 @@ export class TicketService {
     private readonly attachmentService: AttachmentService,
     @InjectRepository(TicketCategory)
     private readonly categoryRepo: Repository<TicketCategory>,
+    @InjectRepository(Project)
+    private readonly projectRepo: Repository<Project>,
     private readonly dataSource: DataSource,
     @InjectRepository(TicketStatus)
     private readonly statusRepo: Repository<TicketStatus>,
@@ -59,7 +62,7 @@ export class TicketService {
 
       // ✅ ใช้ PostgreSQL syntax ($1, $2) และ create_by
       const query = `
-        SELECT id, ticket_no, create_by, created_at
+        SELECT id, ticket_no, create_by, create_date
         FROM ticket t
         WHERE t.id = $1 AND t.create_by = $2 AND t.isenabled = true
       `;
@@ -88,7 +91,7 @@ export class TicketService {
 
       // ✅ ใช้ PostgreSQL syntax ($1, $2) และ create_by
       const query = `
-        SELECT id, ticket_no, create_by, created_at
+        SELECT id, ticket_no, create_by, create_date
         FROM ticket t
         WHERE t.ticket_no = $1 AND t.create_by = $2 AND t.isenabled = true
       `;
@@ -683,12 +686,20 @@ export class TicketService {
       .getRawMany();
 
       // ดึง project of user
-      const projects = await this.dataSource.query(`
-        SELECT p.id, p.name
-        FROM project p
-        INNER JOIN customer_for_project cp ON cp.project_id = p.id
-        WHERE cp.user_id = $1 AND cp.isenabled = true
-      `, [userId]);
+      const projects = await this.projectRepo
+      .createQueryBuilder('p')
+      .innerJoin('customer_for_project', 'cp', 'cp.project_id = p.id')
+      .where('cp.user_id = :userId', { userId })
+      .andWhere('cp.isenabled = true')
+      .select(['p.id', 'p.name'])
+      .getMany();
+
+      const status = await this.statusRepo
+      .createQueryBuilder('ts')
+      .innerJoin('ticket_status_language', 'tsl', 'tsl.status_id = ts.id AND tsl.language_id = :lang', {lang: 'th'})
+      .where('ts.isenabled = true')
+      .select(['ts.id AS id', 'tsl.name AS name'])
+      .getRawMany();
 
       return {
         code: 1,
@@ -696,6 +707,7 @@ export class TicketService {
         data: {
           categories,
           projects,
+          status,
         },
       };
     } catch (error) {
@@ -1301,7 +1313,7 @@ export class TicketService {
     status_name: string;
     language_id: string;
     ticket_no?: string;
-    created_at?: Date;
+    create_date?: Date;
     updated_at?: Date;
   } | null> {
     try {
@@ -1313,7 +1325,7 @@ export class TicketService {
           't.id AS ticket_id',
           't.ticket_no AS ticket_no',
           't.status_id AS status_id',
-          't.created_at AS created_at',
+          't.create_date AS create_date',
           't.updated_at AS updated_at',
           'COALESCE(tsl.name, ts.name, CONCAT(\'Status \', t.status_id)) AS status_name',
           'COALESCE(tsl.language_id, :defaultLang) AS language_id'

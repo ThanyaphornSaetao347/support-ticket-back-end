@@ -16,10 +16,10 @@ interface AuthResponse {
     username: string;
   } | null;
   access_token: string | null;
-  refresh_token?: string; // เพิ่ม refresh token
   expires_in?: string;
   expires_at?: string;
   token_expires_timestamp?: number; // เพิ่ม timestamp
+  permission?: number[]; // เพิ่ม permission field
 }
 
 @Injectable()
@@ -110,18 +110,15 @@ export class AuthService {
     // สร้าง access token
     const accessToken = this.jwtService.sign(payload);
     
-    // สร้าง refresh token (อายุยาวกว่า access token)
-    const refreshToken = this.jwtService.sign(
-      { ...payload, type: 'refresh' }, 
-      { expiresIn: '7d' } // refresh token หมดอายุ 7 วัน
-    );
-    
-    console.log('Generated tokens for user:', user.username);
+    console.log('Generated token for user:', user.username);
     
     // คำนวณ expires_at สำหรับ frontend
     const expiresInSeconds = this.parseExpiresIn(expiresIn);
     const now = Math.floor(Date.now() / 1000);
     const expiresTimestamp = now + expiresInSeconds;
+    
+    // ดึง permissions ของ user
+    const permissions = await this.getUserPermissions(user.id);
     
     return {
       code: 1,
@@ -132,61 +129,38 @@ export class AuthService {
         username: user.username,
       },
       access_token: accessToken,
-      refresh_token: refreshToken,
       expires_in: expiresIn,
       expires_at: new Date(expiresTimestamp * 1000).toISOString(),
       token_expires_timestamp: expiresTimestamp,
+      permission: permissions,
     };
   }
 
-  // เพิ่ม method สำหรับ refresh token
-  async refreshToken(refreshToken: string): Promise<AuthResponse> {
+  // เพิ่ม method สำหรับดึง permissions ของ user จาก database
+  async getUserPermissions(userId: number): Promise<number[]> {
     try {
-      const decoded = this.jwtService.verify(refreshToken);
+      // ใช้ raw query ดึง permissions จาก user_allow_role table
+      const userRoles = await this.userRepo.query(`
+        SELECT role_id 
+        FROM users_allow_role 
+        WHERE user_id = $1
+      `, [userId]);
       
-      // ตรวจสอบว่าเป็น refresh token
-      if (decoded.type !== 'refresh') {
-        throw new UnauthorizedException('Invalid refresh token');
+      if (!userRoles || userRoles.length === 0) {
+        console.log(`No roles found for user ${userId}`);
+        return [];
       }
-
-      const user = await this.userRepo.findOne({ 
-        where: { id: decoded.sub },
-        select: ['id', 'username']
-      });
       
-      if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
-
-      // สร้าง access token ใหม่
-      const payload = { 
-        username: user.username, 
-        sub: user.id,
-      };
-
-      const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '3h';
-      const accessToken = this.jwtService.sign(payload);
+      // ดึง role_id ออกมา
+      const roleIds = userRoles.map(r => r.role_id);
+      console.log(`User ${userId} has roles:`, roleIds);
       
-      const expiresInSeconds = this.parseExpiresIn(expiresIn);
-      const now = Math.floor(Date.now() / 1000);
-      const expiresTimestamp = now + expiresInSeconds;
-
-      return {
-        code: 1,
-        status: true,
-        message: 'Token refreshed successfully',
-        user: {
-          id: user.id,
-          username: user.username,
-        },
-        access_token: accessToken,
-        refresh_token: refreshToken, // ใช้ refresh token เดิม
-        expires_in: expiresIn,
-        expires_at: new Date(expiresTimestamp * 1000).toISOString(),
-        token_expires_timestamp: expiresTimestamp,
-      };
+      // return role_ids ที่เป็น permissions
+      return roleIds;
+      
     } catch (error) {
-      throw new UnauthorizedException('Invalid or expired refresh token');
+      console.error('Error getting user permissions:', error);
+      return [];
     }
   }
 

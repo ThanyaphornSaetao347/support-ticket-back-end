@@ -13,14 +13,14 @@ interface LoginResponse {
     username: string;
   } | null;
   access_token: string | null;
-  refresh_token?: string;
   expires_in?: string;
   expires_at?: string;
   token_expires_timestamp?: number;
+  permission?: number[]; // เพิ่ม permission field
 }
 
-// เพิ่ม interface สำหรับ refresh token response
-interface RefreshTokenResponse {
+// เพิ่ม interface สำหรับ response ทั่วไป
+interface GeneralResponse {
   code: number;
   status: boolean;
   message: string;
@@ -59,57 +59,22 @@ export class AuthController {
     
     console.log('Login response:', result);
 
-    const correctedResponse: LoginResponse = {
-      ...result,
-      user: {
-        id: user.id,
-        username: user.username
-      }
-    };
-
-    return correctedResponse;
-  }
-
-  // แก้ไข method นี้โดยระบุ return type ชัดเจน
-  @Post('refresh')
-  async refreshToken(@Body('refresh_token') refreshToken: string): Promise<RefreshTokenResponse> {
-    try {
-      if (!refreshToken) {
-        throw new HttpException({
-          code: 0,
-          status: false,
-          message: 'Refresh token is required',
-          error: 'REFRESH_TOKEN_REQUIRED',
-        }, HttpStatus.BAD_REQUEST);
-      }
-
-      const result = await this.authService.refreshToken(refreshToken);
-      
-      return {
-        code: 1,
-        status: true,
-        message: 'Token refreshed successfully',
-        data: result,
-      };
-    } catch (error) {
-      throw new HttpException({
-        code: 0,
-        status: false,
-        message: 'Failed to refresh token',
-        error: 'REFRESH_TOKEN_INVALID',
-      }, HttpStatus.UNAUTHORIZED);
-    }
+    return result;
   }
 
   // เพิ่ม endpoint สำหรับตรวจสอบ profile (ทดสอบ JWT)
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   async getProfile(@Request() req) {
+    // ดึง permissions ของ user
+    const permissions = await this.authService.getUserPermissions(req.user.id);
+    
     return {
       code: 1,
       status: true,
       message: 'Profile retrieved successfully',
       user: req.user,
+      permission: permissions,
     };
   }
 
@@ -120,6 +85,7 @@ export class AuthController {
     try {
       const token = authHeader.replace('Bearer ', '');
       const tokenInfo = await this.authService.checkTokenExpiration(token);
+      const permissions = await this.authService.getUserPermissions(req.user.id);
       
       return {
         code: 1,
@@ -132,6 +98,7 @@ export class AuthController {
           expiresAt: tokenInfo.expiresAt,
           minutesLeft: tokenInfo.minutesLeft,
           user: req.user,
+          permission: permissions,
         },
       };
     } catch (error) {
@@ -150,16 +117,16 @@ export class AuthController {
   // เพิ่ม endpoint สำหรับ logout
   @Post('logout')
   @UseGuards(JwtAuthGuard)
-  async logout(@Body('refresh_token') refreshToken?: string) {
-    // ในระบบจริง อาจต้องเพิ่ม refresh token ลงใน blacklist
+  async logout() {
+    // ในระบบจริง อาจต้องเพิ่ม token ลงใน blacklist
     // แต่ในกรณีนี้เราจะให้ client ลบ token เอง
     
     return {
       code: 1,
       status: true,
-      message: 'Logout successful. Please remove tokens from client storage.',
+      message: 'Logout successful. Please remove token from client storage.',
       data: {
-        instruction: 'Remove both access_token and refresh_token from localStorage/sessionStorage',
+        instruction: 'Remove access_token from localStorage/sessionStorage',
       },
     };
   }
@@ -179,6 +146,7 @@ export class AuthController {
 
       const user = await this.authService.validateToken(token);
       const tokenInfo = await this.authService.checkTokenExpiration(token);
+      const permissions = await this.authService.getUserPermissions(user.id);
 
       return {
         code: 1,
@@ -186,6 +154,7 @@ export class AuthController {
         message: 'Token is valid',
         data: {
           user,
+          permission: permissions,
           tokenInfo: {
             isExpiring: tokenInfo.isExpiring,
             shouldRefresh: tokenInfo.shouldRefresh,
