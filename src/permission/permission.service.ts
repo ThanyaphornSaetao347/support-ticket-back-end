@@ -1,120 +1,328 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
-import { CreatePermissionDto } from './dto/create-permission.dto';
-import { UpdatePermissionDto } from './dto/update-permission.dto';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
-import { Repository } from 'typeorm';
 import { MasterRole } from '../master_role/entities/master_role.entity';
+import { Users } from '../users/entities/user.entity';
+
+export interface UserPermissionInfo {
+  userId: number;
+  username: string;
+  roles: Array<{
+    roleId: number;
+    roleName: string;
+  }>;
+}
 
 @Injectable()
 export class PermissionService {
+  private readonly logger = new Logger(PermissionService.name);
+  private permissionCache = new Map<number, UserPermissionInfo>();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private cacheTimestamps = new Map<number, number>();
+
   constructor(
     @InjectRepository(UserAllowRole)
-    private readonly allowRoleRepo: Repository<UserAllowRole>,
+    private readonly userAllowRoleRepo: Repository<UserAllowRole>,
     @InjectRepository(MasterRole)
-    private readonly masterRepo: Repository<MasterRole>,
-  ){}
+    private readonly masterRoleRepo: Repository<MasterRole>,
+    @InjectRepository(Users)
+    private readonly usersRepo: Repository<Users>,
+    private readonly dataSource: DataSource,
+  ) {}
 
-  async get_permission_all() {
+  /**
+   * ดึงข้อมูล roles ของ user จาก database
+   */
+  async getUserPermissionInfo(userId: number): Promise<UserPermissionInfo | null> {
+    // ตรวจสอบ cache ก่อน
+    if (this.isCacheValid(userId)) {
+      return this.permissionCache.get(userId) || null;
+    }
+
     try {
-      const role = await this.masterRepo.find();
-      return role;
+      // ดึงข้อมูล user และ roles ด้วย raw query เพื่อความเร็ว
+      const userRolesQuery = `
+        SELECT 
+          u.id as user_id,
+          u.username,
+          mr.id as role_id,
+          mr.role_name
+        FROM users u
+        LEFT JOIN users_allow_role uar ON u.id = uar.user_id
+        LEFT JOIN master_role mr ON uar.role_id = mr.id
+        WHERE u.id = $1 AND u.isenabled = true
+      `;
+
+      const results = await this.dataSource.query(userRolesQuery, [userId]);
+
+      if (results.length === 0) {
+        return null;
+      }
+
+      const userInfo: UserPermissionInfo = {
+        userId: results[0].user_id,
+        username: results[0].username,
+        roles: results
+          .filter(row => row.role_id !== null)
+          .map(row => ({
+            roleId: row.role_id,
+            roleName: row.role_name,
+          })),
+      };
+
+      // เก็บใน cache
+      this.permissionCache.set(userId, userInfo);
+      this.cacheTimestamps.set(userId, Date.now());
+
+      return userInfo;
     } catch (error) {
-      console.error('Error fetching roles:', error);
-      throw error
+      this.logger.error(`Error getting user permission info for user ${userId}:`, error);
+      return null;
     }
   }
 
-  async get_permission_byOne(user_id: number): Promise<number[]> {
-    try {
-      const role = await this.allowRoleRepo.find({
-        where: { user_id },
-        relations: ['role'],
-      });
-      return role.map(r => r.role.id);
-    } catch (error) {
-      console.error('Error fetching user roles:', error);
-      throw error;
+  /**
+   * ตรวจสอบว่า user มี role หรือไม่
+   */
+  async hasRole(userId: number, roleId: number): Promise<boolean> {
+    const userInfo = await this.getUserPermissionInfo(userId);
+    if (!userInfo) return false;
+
+    return userInfo.roles.some(role => role.roleId === roleId);
+  }
+
+  /**
+   * ตรวจสอบว่า user มี role ใดๆ ใน array หรือไม่
+   */
+  async hasAnyRole(userId: number, roleIds: number[]): Promise<boolean> {
+    const userInfo = await this.getUserPermissionInfo(userId);
+    if (!userInfo) return false;
+
+    const userRoleIds = userInfo.roles.map(role => role.roleId);
+    return roleIds.some(roleId => userRoleIds.includes(roleId));
+  }
+
+  /**
+   * ตรวจสอบว่า user มี role ทั้งหมดใน array หรือไม่
+   */
+  async hasAllRoles(userId: number, roleIds: number[]): Promise<boolean> {
+    const userInfo = await this.getUserPermissionInfo(userId);
+    if (!userInfo) return false;
+
+    const userRoleIds = userInfo.roles.map(role => role.roleId);
+    return roleIds.every(roleId => userRoleIds.includes(roleId));
+  }
+
+  /**
+   * ดึง role IDs ของ user
+   */
+  async getUserRoleIds(userId: number): Promise<number[]> {
+    const userInfo = await this.getUserPermissionInfo(userId);
+    return userInfo ? userInfo.roles.map(role => role.roleId) : [];
+  }
+
+  /**
+   * ดึง role names ของ user
+   */
+  async getUserRoleNames(userId: number): Promise<string[]> {
+    const userInfo = await this.getUserPermissionInfo(userId);
+    return userInfo ? userInfo.roles.map(role => role.roleName) : [];
+  }
+
+  /**
+   * ตรวจสอบสิทธิ์ตาม business logic
+   */
+  
+  // User Management Permissions
+  async canCreateUser(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 15); // USER_MANAGER = 15
+  }
+
+  async canReadUser(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [13, 15]); // ADMIN = 13, USER_MANAGER = 15
+  }
+
+  async canUpdateUser(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [13, 15]); // ADMIN = 13, USER_MANAGER = 15
+  }
+
+  async canDeleteUser(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [13, 15]); // ADMIN = 13, USER_MANAGER = 15
+  }
+
+  // Ticket Management Permissions
+  async canCreateTicket(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 1); // REPORTER = 1
+  }
+
+  async canReadTicket(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [1, 2, 12, 13]); // REPORTER, TRACKER, TICKET_OWNER, ADMIN
+  }
+
+  async canReadAllTickets(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [2, 13]); // TRACKER = 2, ADMIN = 13
+  }
+
+  async canUpdateTicket(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [3, 8, 13]); // EDITOR = 3, PROBLEM_SOLVER = 8, ADMIN = 13
+  }
+
+  async canDeleteTicket(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [4, 13]); // DELETER = 4, ADMIN = 13
+  }
+
+  async canRestoreTicket(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [11, 13]); // RESTORER = 11, ADMIN = 13
+  }
+
+  async canViewDeletedTickets(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [11, 13]); // RESTORER = 11, ADMIN = 13
+  }
+
+  // Ticket Operations
+  async canAssignTicket(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [9, 13]); // ASSIGNOR = 9, ADMIN = 13
+  }
+
+  async canChangeStatus(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [5, 13]); // STATUS_CHANGER = 5, ADMIN = 13
+  }
+
+  async canSolveProblem(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [8, 13]); // PROBLEM_SOLVER = 8, ADMIN = 13
+  }
+
+  // Project Management
+  async canCreateProject(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [10, 13]); // PROJECT_MANAGER = 10, ADMIN = 13
+  }
+
+  async canReadProject(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [10, 13]); // PROJECT_MANAGER = 10, ADMIN = 13
+  }
+
+  async canUpdateProject(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [10, 13]); // PROJECT_MANAGER = 10, ADMIN = 13
+  }
+
+  async canDeleteProject(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [10, 13]); // PROJECT_MANAGER = 10, ADMIN = 13
+  }
+
+  // Category Management
+  async canManageCategory(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [6, 13]); // CATEGORY_MANAGER = 6, ADMIN = 13
+  }
+
+  // Status Management
+  async canManageStatus(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [7, 13]); // STATUS_MANAGER = 7, ADMIN = 13
+  }
+
+  // Satisfaction
+  async canRateSatisfaction(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 14); // RATER = 14
+  }
+
+  // Special Checks
+  async isAdmin(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 13); // ADMIN = 13
+  }
+
+  async isSupporter(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [16, 13]); // SUPPORTER = 16, ADMIN = 13
+  }
+
+  /**
+   * ตรวจสอบว่าเป็นเจ้าของ resource หรือไม่
+   */
+  async isResourceOwner(userId: number, resourceCreatorId: number): Promise<boolean> {
+    return userId === resourceCreatorId;
+  }
+
+  /**
+   * ตรวจสอบสิทธิ์แบบ combined (เจ้าของ หรือ มีสิทธิ์พิเศษ)
+   */
+  async canAccessResource(
+    userId: number, 
+    resourceCreatorId: number, 
+    requiredRoles: number[]
+  ): Promise<boolean> {
+    // ถ้าเป็นเจ้าของ resource
+    if (await this.isResourceOwner(userId, resourceCreatorId)) {
+      return true;
     }
+
+    // ถ้ามีสิทธิ์พิเศษ
+    return this.hasAnyRole(userId, requiredRoles);
   }
 
-  /** ตรวจสอบ role ของ user */
-  async checkRole(userId: number, requiredRoles: number[]): Promise<boolean> {
-    const roles = await this.get_permission_byOne(userId);
-    return requiredRoles.some(role => roles.includes(role));
-  }
-
-  /** ตรวจสอบ permission ของ user */
-  async checkPermission(userId: number, requiredPermissions: number[]): Promise<boolean> {
-    // ในกรณีนี้ ใช้ role_name แทน permission_name
-    const userRoles = await this.get_permission_byOne(userId);
-    return requiredPermissions.every(p => userRoles.includes(p));
-  }
-
-  /** ตรวจสอบว่า user มี permission หรือไม่ */
-  async requirePermission(userId: number, requiredPermissions: number[]): Promise<void> {
-    const hasPermission = await this.checkPermission(userId, requiredPermissions);
+  /**
+   * Cache management
+   */
+  private isCacheValid(userId: number): boolean {
+    const timestamp = this.cacheTimestamps.get(userId);
+    if (!timestamp) return false;
     
-    if (!hasPermission) {
-      throw new ForbiddenException(
-        `Required permissions: ${requiredPermissions.join(', ')}`
-      );
-    }
+    return (Date.now() - timestamp) < this.CACHE_TTL;
   }
 
-  /** ตรวจสอบว่า user มี role หรือไม่ */
-  async requireRole(userId: number, requiredRoles: number[]): Promise<void> {
-    const hasRole = await this.checkRole(userId, requiredRoles);
+  clearUserCache(userId: number): void {
+    this.permissionCache.delete(userId);
+    this.cacheTimestamps.delete(userId);
+  }
+
+  clearAllCache(): void {
+    this.permissionCache.clear();
+    this.cacheTimestamps.clear();
+  }
+
+  /**
+   * Utility methods
+   */
+  async getAllRoles(): Promise<MasterRole[]> {
+    return this.masterRoleRepo.find({
+      order: { id: 'ASC' }
+    });
+  }
+
+  async getRoleById(roleId: number): Promise<MasterRole | null> {
+    return this.masterRoleRepo.findOne({ where: { id: roleId } });
+  }
+
+  async getUsersByRole(roleId: number): Promise<Users[]> {
+    const query = `
+      SELECT u.*
+      FROM users u
+      INNER JOIN users_allow_role uar ON u.id = uar.user_id
+      WHERE uar.role_id = $1 AND u.isenabled = true
+    `;
+
+    return this.dataSource.query(query, [roleId]);
+  }
+
+  /**
+   * Debug methods
+   */
+  async debugUserPermissions(userId: number): Promise<any> {
+    const userInfo = await this.getUserPermissionInfo(userId);
     
-    if (!hasRole) {
-      throw new ForbiddenException(
-        `Required roles: ${requiredRoles.join(', ')}`
-      );
-    }
-  }
-
-  /** ดึง permissions ของ user ทั้งหมด (ใช้ role_name แทน) */
-  async getUserPermissions(userId: number): Promise<string[]> {
-    const userRoles = await this.allowRoleRepo.find({
-      where: { user_id: userId },
-      relations: ['role'],
-    });
-
-    if (!userRoles.length) return [];
-
-    // สมมติว่า permission ใช้ role_name แทน
-    const allPermissions = userRoles.map(ur => ur.role?.role_name).filter(Boolean);
-
-    return [...new Set(allPermissions)];
-  }
-
-  /** ดึง roles ของ user ทั้งหมด */
-  async getUserRoles(userId: number): Promise<string[]> {
-    const userRoles = await this.allowRoleRepo.find({
-      where: { user_id: userId },
-      relations: ['role'],
-    });
-
-    return userRoles.map(ur => ur.role?.role_name).filter(Boolean);
-  }
-
-  create(createPermissionDto: CreatePermissionDto) {
-    return 'This action adds a new permission';
-  }
-
-  findAll() {
-    return `This action returns all permission`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} permission`;
-  }
-
-  update(id: number, updatePermissionDto: UpdatePermissionDto) {
-    return `This action updates a #${id} permission`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} permission`;
+    return {
+      userId,
+      userInfo,
+      permissions: {
+        canCreateUser: await this.canCreateUser(userId),
+        canReadUser: await this.canReadUser(userId),
+        canCreateTicket: await this.canCreateTicket(userId),
+        canReadAllTickets: await this.canReadAllTickets(userId),
+        canUpdateTicket: await this.canUpdateTicket(userId),
+        canDeleteTicket: await this.canDeleteTicket(userId),
+        canAssignTicket: await this.canAssignTicket(userId),
+        canChangeStatus: await this.canChangeStatus(userId),
+        isAdmin: await this.isAdmin(userId),
+        isSupporter: await this.isSupporter(userId),
+      }
+    };
   }
 }
