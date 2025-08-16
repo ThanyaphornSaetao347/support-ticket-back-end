@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Get, Param, Put, Delete, Query, UseGuards, Req } from '@nestjs/common';
+import { Body, Controller, Post, Get, Param, Put, Delete, Query, UseGuards, Req, ForbiddenException } from '@nestjs/common';
 import { UserService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -11,27 +11,31 @@ import { requirePermissions } from '../permission/permission.decorator';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  @Post()
-  @UseGuards(AuthGuard('jwt')) // เพิ่ม JWT Guard สำหรับการสร้างผู้ใช้ใหม่
-  @requirePermissions(permissionEnum.ADD_USER)
-  async create(@Body() createUserDto: CreateUserDto, @Req() req: Request) {
-    try {
-      // ดึง user_id จาก JWT token
-      const userId = req.user && req.user['id'] ? req.user['id'] : null;
+  private async canAddUser(userId: number): Promise<boolean> {
+    if (!userId) return false;
 
-      // check permission is admin?
-      
-      
-      // เพิ่ม create_by และ update_by จาก user_id ที่ login
-      createUserDto.create_by = userId;
-      createUserDto.update_by = userId;
-      
-      console.log('Received DTO:', createUserDto);
-      return await this.userService.create(createUserDto);
-    } catch (error) {
-      console.error('Error creating user:', error);
-      throw error;
+    // ดึง role ของ user จากฐานข้อมูล (เช่น ผ่าน userService)
+    const roles: number[] = await this.userService.getUserIdsByRole([15]);
+
+    // สมมติ role 1 = Admin, role 2 = SuperAdmin สามารถเพิ่มผู้ใช้ได้
+    return roles.some(r => roles.includes(r));
+  }
+
+  @Post()
+  @UseGuards(AuthGuard('jwt'))
+  async create(@Body() createUserDto: CreateUserDto, @Req() req: Request) {
+    const userId = req.user && req.user['id'] ? req.user['id'] : null;
+
+    if (!userId || !(await this.canAddUser(userId))) {
+      throw new ForbiddenException('คุณไม่มีสิทธิ์ในการเพิ่มผู้ใช้');
     }
+
+    // เพิ่ม create_by และ update_by จาก user_id ที่ login
+    createUserDto.create_by = userId;
+    createUserDto.update_by = userId;
+
+    console.log('Received DTO:', createUserDto);
+    return await this.userService.create(createUserDto);
   }
 
   @Get()

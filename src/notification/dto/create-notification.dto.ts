@@ -3,7 +3,7 @@ import { NotificationType } from "../entities/notification.entity";
 
 export class CreateNotificationDto {
     @IsString()
-    ticket_id: string;
+    ticket_no: string;
 
     @IsNumber()
     user_id: number;

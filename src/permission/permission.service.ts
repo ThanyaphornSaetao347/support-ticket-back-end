@@ -5,46 +5,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
 import { Repository } from 'typeorm';
 import { MasterRole } from '../master_role/entities/master_role.entity';
-import { permissionEnum } from '../permission';
-
-const ROLE_PERMISSIONS = {
-  'admin': [
-    permissionEnum.ADD_USER,
-    permissionEnum.ASSIGNEE,
-    permissionEnum.CHANGE_STATUS,
-    permissionEnum.CLOSE_TICKET,
-    permissionEnum.DEL_USER,
-    permissionEnum.OPEN_TICKET,
-    permissionEnum.REPLY_TICKET,
-    permissionEnum.TRACK_TICKET,
-    permissionEnum.VIEW_ALL_TICKETS,
-    permissionEnum.SOLVE_PROBLEM
-  ],
-  'supporter': [
-    permissionEnum.CHANGE_STATUS,
-    permissionEnum.CLOSE_TICKET,
-    permissionEnum.OPEN_TICKET,
-    permissionEnum.REPLY_TICKET,
-    permissionEnum.VIEW_ALL_TICKETS,
-    permissionEnum.SOLVE_PROBLEM,
-    permissionEnum.ASSIGNEE
-  ],
-  'user': [
-    permissionEnum.CREATE_TICKET,
-    permissionEnum.DELETE_TICKET,
-    permissionEnum.EDIT_TICKET,
-    permissionEnum.RESTORE_TICKET,
-    permissionEnum.SATISFACTION,
-    permissionEnum.TRACK_TICKET,
-    permissionEnum.VIEW_OWN_TICKETS
-  ]
-}
-
-export const ROLES = {
-  ADMIN: 'admin',
-  SUPPORTER: 'supporter',
-  USER: 'user',
-} as const;
 
 @Injectable()
 export class PermissionService {
@@ -55,62 +15,55 @@ export class PermissionService {
     private readonly masterRepo: Repository<MasterRole>,
   ){}
 
-  async checkPermission(userId: number, requiredPermissions: permissionEnum[]): Promise<boolean> {
-    // ดึง roles ของ user
-    const userRoles = await this.allowRoleRepo.find({
-      where: { user_id: userId },
-      relations: ['role'],
-    });
-
-    if (!userRoles.length) {
-      return false;
+  async get_permission_all() {
+    try {
+      const role = await this.masterRepo.find();
+      return role;
+    } catch (error) {
+      console.error('Error fetching roles:', error);
+      throw error
     }
-
-    // รวม permissions จาก role_name
-    const userPermissions = userRoles.reduce((permissions, userRole) => {
-      const roleName = userRole.role?.role_name?.toLowerCase();
-      if (roleName && ROLE_PERMISSIONS[roleName]) {
-        return [...permissions, ...ROLE_PERMISSIONS[roleName]];
-      }
-      return permissions;
-    }, []);
-
-    // ลบ permission ที่ซ้ำ
-    const uniquePermissions = [...new Set(userPermissions)];
-
-    // ตรวจสอบว่ามี permission ที่ต้องการหรือไม่
-    return requiredPermissions.every(permission => 
-      uniquePermissions.includes(permission)
-    );
   }
 
-  async checkRole(userId: number, requiredRoles: string[]): Promise<boolean> {
-    const userRoles = await this.allowRoleRepo.find({
-      where: { user_id: userId },
-      relations: ['role'],
-    });
-
-    const userRoleNames = userRoles
-      .map(ur => ur.role?.role_name?.toLowerCase())
-      .filter(Boolean);
-    
-    return requiredRoles.some(role => 
-      userRoleNames.includes(role.toLowerCase())
-    );
+  async get_permission_byOne(user_id: number): Promise<number[]> {
+    try {
+      const role = await this.allowRoleRepo.find({
+        where: { user_id },
+        relations: ['role'],
+      });
+      return role.map(r => r.role.id);
+    } catch (error) {
+      console.error('Error fetching user roles:', error);
+      throw error;
+    }
   }
 
-  async requirePermission(userId: number, requiredPermissions: permissionEnum[]): Promise<void> {
+  /** ตรวจสอบ role ของ user */
+  async checkRole(userId: number, requiredRoles: number[]): Promise<boolean> {
+    const roles = await this.get_permission_byOne(userId);
+    return requiredRoles.some(role => roles.includes(role));
+  }
+
+  /** ตรวจสอบ permission ของ user */
+  async checkPermission(userId: number, requiredPermissions: number[]): Promise<boolean> {
+    // ในกรณีนี้ ใช้ role_name แทน permission_name
+    const userRoles = await this.get_permission_byOne(userId);
+    return requiredPermissions.every(p => userRoles.includes(p));
+  }
+
+  /** ตรวจสอบว่า user มี permission หรือไม่ */
+  async requirePermission(userId: number, requiredPermissions: number[]): Promise<void> {
     const hasPermission = await this.checkPermission(userId, requiredPermissions);
     
     if (!hasPermission) {
-      const permissionNames = requiredPermissions.map(p => permissionEnum[p]).join(', ');
       throw new ForbiddenException(
-        `Required permissions: ${permissionNames}`
+        `Required permissions: ${requiredPermissions.join(', ')}`
       );
     }
   }
 
-  async requireRole(userId: number, requiredRoles: string[]): Promise<void> {
+  /** ตรวจสอบว่า user มี role หรือไม่ */
+  async requireRole(userId: number, requiredRoles: number[]): Promise<void> {
     const hasRole = await this.checkRole(userId, requiredRoles);
     
     if (!hasRole) {
@@ -120,36 +73,29 @@ export class PermissionService {
     }
   }
 
-  async getUserPermissions(userId: number): Promise<permissionEnum[]> {
+  /** ดึง permissions ของ user ทั้งหมด (ใช้ role_name แทน) */
+  async getUserPermissions(userId: number): Promise<string[]> {
     const userRoles = await this.allowRoleRepo.find({
       where: { user_id: userId },
       relations: ['role'],
     });
 
-    if (!userRoles.length) {
-      return [];
-    }
+    if (!userRoles.length) return [];
 
-    const allPermissions = userRoles.reduce((permissions, userRole) => {
-      const roleName = userRole.role?.role_name?.toLowerCase();
-      if (roleName && ROLE_PERMISSIONS[roleName]) {
-        return [...permissions, ...ROLE_PERMISSIONS[roleName]];
-      }
-      return permissions;
-    }, []);
+    // สมมติว่า permission ใช้ role_name แทน
+    const allPermissions = userRoles.map(ur => ur.role?.role_name).filter(Boolean);
 
     return [...new Set(allPermissions)];
   }
 
+  /** ดึง roles ของ user ทั้งหมด */
   async getUserRoles(userId: number): Promise<string[]> {
     const userRoles = await this.allowRoleRepo.find({
       where: { user_id: userId },
       relations: ['role'],
     });
 
-    return userRoles
-      .map(ur => ur.role?.role_name)
-      .filter(Boolean);
+    return userRoles.map(ur => ur.role?.role_name).filter(Boolean);
   }
 
   create(createPermissionDto: CreatePermissionDto) {

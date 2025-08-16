@@ -33,11 +33,10 @@ import { Ticket } from './entities/ticket.entity';
 import { ForbiddenTransactionModeOverrideError, Repository } from 'typeorm';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { NotificationService } from '../notification/notification.service';
-import { data } from 'jquery';
-import { identity } from 'rxjs';
-import { permissionEnum } from '../permission'
-import { ROLES } from '../permission/permission.service';
 import { requirePermissions, RequireRoles } from '../permission/permission.decorator';
+import { PermissionService } from '../permission/permission.service';
+import { TicketAssigned } from 'src/ticket_assigned/entities/ticket_assigned.entity';
+import { UserService } from 'src/users/users.service';
 
 
 @Controller('api')
@@ -49,6 +48,8 @@ export class TicketController {
     private readonly ticketStatusService: TicketStatusService,
     private readonly ststusService: TicketStatusService,
     private readonly notiService: NotificationService,
+    private readonly permissionService: PermissionService,
+    private readonly userService: UserService,
   ){}
 
   // ✅ เพิ่ม Language Detection Methods
@@ -169,440 +170,448 @@ export class TicketController {
   }
 
   // ✅ ปรับปรุง checkPermission ให้ debug ชัดเจนขึ้น
-  private async checkPermission(userId: number, permissions: permissionEnum[]): Promise<boolean> {
-    if (!userId) {
-      console.log('❌ checkPermission: userId is null/undefined');
-      return false;
-    }
+  // ===================== Permission & Ownership Check =====================
+
+  private async checkPermission(userId: number, role_id: number[]): Promise<boolean> {
+    if (!userId || !role_id?.length) return false;
 
     try {
-      console.log(`🔒 === checkPermission Debug ===`);
-      console.log(`User ID: ${userId}`);
-      console.log(`Required permissions: ${permissions}`);
+        console.log(`🔒 checkPermission: userId=${userId}, role_id=${role_id}`);
 
-      const userPermissions: number[] = await this.ticketService.checkUserPermissions(userId);
-      console.log('User permissions from DB:', userPermissions);
+        // ดึงสิทธิ์ของ user จาก DB
+        const userPermissions: number[] = await this.ticketService.checkUserPermissions(userId);
+        console.log('📋 Permissions from DB:', userPermissions);
 
-      if (!userPermissions || !userPermissions.length) {
-        console.log('❌ User has no permissions in database');
-        return false;
-      }
+        if (!userPermissions?.length) return false;
 
-      const results = permissions.map(requiredPerm => {
-        const hasIt = userPermissions.includes(requiredPerm);
-        console.log(`Permission ${requiredPerm}: ${hasIt ? '✅' : '❌'}`);
-        return hasIt;
-      });
+        // ตรวจสอบว่า user มีอย่างน้อยหนึ่งสิทธิ์ที่ต้องการ
+        const allowed = role_id.some(pid => userPermissions.includes(pid));
+        console.log('✅ Has permission?', allowed);
 
-      const hasAllPermissions = results.some(result => result === true);
-
-      console.log(`Final result: ${hasAllPermissions ? '✅ ALLOWED' : '❌ DENIED'}`);
-      console.log(`=== End checkPermission Debug ===`);
-
-      return hasAllPermissions;
+        return allowed;
     } catch (error) {
-      console.error('💥 Permission check error:', error);
-      return false;
+        console.error('💥 checkPermission error:', error);
+        return false;
     }
   }
 
-  // ✅ เพิ่มฟังก์ชันตรวจสอบว่าเป็นเจ้าของตั๋วหรือไม่
-  private async isTicketOwner(userId: number, ticketId: number): Promise<boolean> {
+  private async isTicketOwner(userId: number, ticketId: number, userPermissions: number[]): Promise<boolean> {
+    if (!userId || !ticketId) return false;
     try {
-      // ตรวจสอบว่า user นี้เป็นคนสร้างตั๋วหรือไม่
-      const result = await this.ticketService.checkTicketOwnership(userId, ticketId);
-      return result && result.length > 0;
-    } catch (error) {
-      console.error('Error checking ticket ownership:', error);
-      return false;
-    }
-  }
-
-  private async isTicketOwnerByNo(userId: number, ticketNo: string): Promise<boolean> {
-    try {
-      console.log('👤 === isTicketOwnerByNo Debug ===');
-      console.log('Input parameters:', { userId, ticketNo });
-      
-      // ✅ ตรวจสอบ parameters
-      if (!userId || !ticketNo) {
-        console.log('❌ Invalid parameters in isTicketOwnerByNo');
-        return false;
-      }
-
-      // ✅ เรียก service method
-      const result = await this.ticketService.checkTicketOwnershipByNo(userId, ticketNo);
-      console.log('Service result:', result);
-      
-      const isOwner = result && result.length > 0;
-      console.log('Final ownership result:', isOwner);
-      
-      return isOwner;
-    } catch (error) {
-      console.error('💥 Error in isTicketOwnerByNo:', error);
-      return false;
-    }
-  }
-
-  // ✅ ปรับปรุงฟังก์ชันตรวจสอบสิทธิ์ให้รองรับ owner
-  private async canAccessTicket(userId: number, ticketId: number): Promise<boolean> {
-    // 1. ตรวจสอบสิทธิ์ทั่วไป (TRACK_TICKET)
-    const hasGeneralPermission = await this.checkPermission(userId, [permissionEnum.TRACK_TICKET]);
-    if (hasGeneralPermission) {
-      return true;
-    }
-
-    // 2. ถ้าไม่มีสิทธิ์ทั่วไป ให้ตรวจสอบว่าเป็นเจ้าของตั๋วหรือไม่
-    const isOwner = await this.isTicketOwner(userId, ticketId);
-    if (isOwner) {
-      console.log(`✅ User ${userId} is owner of ticket ${ticketId}`);
-      return true;
-    }
-
-    return false;
-  }
-
-  // ✅ ปรับปรุง canAccessTicketByNo ให้ debug parameter
-  private async canAccessTicketByNo(userId: number, ticketNo: string): Promise<boolean> {
-    try {
-      console.log('🔐 === canAccessTicketByNo Debug ===');
-      console.log('Input parameters:', { userId, ticketNo });
-      console.log('userId type:', typeof userId);
-      console.log('ticketNo type:', typeof ticketNo);
-      
-      // ✅ ตรวจสอบ parameters อย่างละเอียด
-      if (userId === undefined || userId === null) {
-        console.log('❌ userId is undefined or null');
-        return false;
-      }
-      
-      if (!ticketNo || ticketNo.trim() === '') {
-        console.log('❌ ticketNo is empty or null');
-        return false;
-      }
-
-      // ✅ แปลงเป็น number ถ้าจำเป็น
-      const numericUserId = typeof userId === 'string' ? parseInt(userId) : userId;
-      
-      if (isNaN(numericUserId)) {
-        console.log('❌ userId is not a valid number:', userId);
-        return false;
-      }
-
-      console.log('✅ Parameters validated. Checking permissions...');
-
-      // 1. ตรวจสอบสิทธิ์ทั่วไป
-      console.log('🔍 Checking general permissions...');
-      const hasGeneralPermission = await this.checkPermission(numericUserId, [permissionEnum.TRACK_TICKET]);
-      console.log('📋 General permission result:', hasGeneralPermission);
-      
-      if (hasGeneralPermission) {
-        console.log('✅ User has general TRACK_TICKET permission');
-        return true;
-      }
-
-      // 2. ตรวจสอบเจ้าของตั๋ว
-      console.log('🔍 Checking ticket ownership...');
-      const isOwner = await this.isTicketOwnerByNo(numericUserId, ticketNo);
-      console.log('👤 Ownership result:', isOwner);
-      
-      if (isOwner) {
-        console.log('✅ User is owner of the ticket');
-        return true;
-      }
-
-      console.log('❌ User has no access to the ticket');
-      return false;
-    } catch (error) {
-      console.error('💥 Error in canAccessTicketByNo:', error);
-      return false;
-    }
-  }
-
-  // ✅ ฟังก์ชันตรวจสอบสิทธิ์สำหรับการแก้ไข
-  private async canEditTicket(userId: number, ticketNo: string): Promise<boolean> {
-    // 1. ตรวจสอบสิทธิ์ทั่วไป (EDIT_TICKET)
-    const hasEditPermission = await this.checkPermission(userId, [permissionEnum.EDIT_TICKET]);
-    if (hasEditPermission) {
-      return true;
-    }
-
-    // 2. ตรวจสอบเจ้าของตั๋ว
-    const isOwner = await this.isTicketOwnerByNo(userId, ticketNo);
-    if (isOwner) {
-      console.log(`✅ User ${userId} can edit ticket ${ticketNo} as owner`);
-      return true;
-    }
-
-    return false;
-  }
-
-  // ✅ ฟังก์ชันตรวจสอบสิทธิ์สำหรับการลบ
-  private async canDeleteTicket(userId: number, ticketNo: string): Promise<boolean> {
-    // 1. ตรวจสอบสิทธิ์ทั่วไป (DELETE_TICKET)
-    const hasDeletePermission = await this.checkPermission(userId, [permissionEnum.DELETE_TICKET]);
-    if (hasDeletePermission) {
-      return true;
-    }
-
-    // 2. ตรวจสอบเจ้าของตั๋ว
-    const isOwner = await this.isTicketOwnerByNo(userId, ticketNo);
-    if (isOwner) {
-      console.log(`✅ User ${userId} can delete ticket ${ticketNo} as owner`);
-      return true;
-    }
-
-    return false;
-  }
-
-  // ✅ แก้ไข canViewAllTicket ให้ง่ายและชัดเจน
-  private async canViewAllTicket(userId: number, ticketNo: string): Promise<boolean> {
-    try {
-      console.log('👀 === canViewAllTicket Debug ===');
-      console.log('Input parameters:', { userId, ticketNo });
-      
-      if (!userId) {
-        console.log('❌ Invalid userId');
-        return false;
-      }
-
-      const numericUserId = typeof userId === 'string' ? parseInt(userId) : userId;
-      
-      if (isNaN(numericUserId)) {
-        console.log('❌ userId is not a valid number:', userId);
-        return false;
-      }
-
-      // ✅ ดึงข้อมูล user permissions
-      console.log('🔍 Getting user permissions...');
-      const userPermissions: number[] = await this.ticketService.checkUserPermissions(numericUserId);
-      console.log('📋 User permissions from database:', userPermissions);
-
-      // ✅ เช็คแบบง่ายๆ - ถ้ามี permission 13 ให้ผ่านเลย
-      if (userPermissions.includes(13)) {
-        console.log('✅ User has VIEW_ALL_TICKETS permission (13) - ALLOWED');
-        return true;
-      }
-
-      // ✅ เช็คว่ามี admin permissions หรือไม่ (5-10)
-      const adminPerms = [5, 6, 7, 8, 9, 10, 13];
-      const hasAdminPerm = adminPerms.some(perm => userPermissions.includes(perm));
-      
-      if (hasAdminPerm) {
-        console.log('✅ User has admin permissions - ALLOWED');
-        console.log('Admin permissions found:', adminPerms.filter(p => userPermissions.includes(p)));
-        return true;
-      }
-
-      // ✅ เช็ค TRACK_TICKET (2)
-      if (userPermissions.includes(2)) {
-        console.log('✅ User has TRACK_TICKET permission (2) - ALLOWED');
-        return true;
-      }
-
-      // ✅ ถ้าระบุ ticketNo ให้ตรวจสอบว่าเป็นเจ้าของหรือไม่
-      if (ticketNo) {
-        console.log('🔍 Checking ticket ownership...');
-        const isOwner = await this.isTicketOwnerByNo(numericUserId, ticketNo);
-        console.log('👤 Is ticket owner:', isOwner);
-        
-        if (isOwner) {
-          console.log('✅ User is ticket owner - ALLOWED');
-          return true;
+        const isOwner = await this.ticketService.checkTicketOwnership(userId, ticketId, userPermissions);
+        if (!isOwner) {
+          throw new ForbiddenException('คุณไม่มีสิทธิ์เข้าถึงตั๋วนี้');
         }
-      }
-
-      console.log('❌ DENIED - User has no permission to view tickets');
-      console.log('❌ User permissions:', userPermissions);
-      console.log('❌ Required: permission 13 OR admin perms (5-10) OR track perm (2) OR ownership');
-      
-      return false;
+        console.log(`👤 isTicketOwner: userId=${userId}, ticketId=${ticketId}, owner=${isOwner}`);
+        return isOwner;
     } catch (error) {
-      console.error('💥 Error in canViewAllTicket:', error);
+        console.error('💥 isTicketOwner error:', error);
+        return false;
+    }
+  }
+
+  private async isTicketOwnerByNo(userId: number, ticketNo: string, userPermissions: number[]): Promise<boolean> {
+    if (!userId || !ticketNo) return false;
+    try {
+        const isOwner = await this.ticketService.checkTicketOwnershipByNo(userId, ticketNo, userPermissions);
+        if (!isOwner) {
+          throw new ForbiddenException('คุณไม่มีสิทธิ์เข้าถึงตั๋วนี้');
+        }
+        console.log(`👤 isTicketOwnerByNo: userId=${userId}, ticketNo=${ticketNo}, owner=${isOwner}`);
+        return isOwner;
+    } catch (error) {
+        console.error('💥 isTicketOwnerByNo error:', error);
+        return false;
+    }
+  }
+
+  // ===================== General Access =====================
+
+  private async canAccessTicket(userId: number, ticketId: number, userPermissions: number[]): Promise<boolean> {
+    try {
+      console.log(`🔍 Checking ticket access: ticket ${ticketId}, user ${userId}`);
+      
+      if (!userId || !ticketId) {
+        console.log(`❌ Invalid parameters: userId=${userId}, ticketId=${ticketId}`);
+        return false;
+      }
+      // ถ้ามีสิทธิ์ใดใน [2, 12, 13] ก็ผ่าน
+      const hasTrack = [2, 12, 13].some(p => userPermissions.includes(p));
+      if (hasTrack) return true;
+
+      // ถ้าไม่มีสิทธิ์ข้างต้น ให้เช็คว่าเป็นเจ้าของตั๋วหรือไม่
+      const owner = await this.isTicketOwner(userId, ticketId, userPermissions);
+      return owner;
+    } catch (error) {
+      console.error('Error', error);
+      throw error;
+    }
+  }
+
+  private async canAccessTicketByNo(userId: number, ticketNo: string, userPermissions: number[]): Promise<boolean> {
+    try {
+      if (!userId || !ticketNo) return false;
+      // ✅ ตรวจสอบแบบ some: ถ้ามีอย่างน้อย 1 permission ใน [2,12,13] → ผ่าน
+      const allowedRoles = [2, 12, 13];
+      const hasPermission = allowedRoles.some(role => userPermissions.includes(role));
+      if (hasPermission) return true;
+
+      // ✅ ตรวจสอบเจ้าของตั๋ว
+      const owner = await this.isTicketOwnerByNo(userId, ticketNo, userPermissions);
+      return owner;
+    } catch (error) {
+      console.error('Error', error);
+      throw error;
+    }
+  }
+
+  // ===================== Edit / Delete =====================
+
+  private async canEditTicket(
+    userId: number,
+    ticketNo: string,
+    userPermissions: number[]
+  ): Promise<boolean> {
+    // ตรวจสอบ permission แบบตรง ๆ
+    if (userPermissions.includes(3)) return true; // EDIT_TICKET = 3
+
+    // ตรวจสอบว่าเป็นเจ้าของตั๋ว
+    const owner = await this.isTicketOwnerByNo(userId, ticketNo, userPermissions);
+    return owner;
+  }
+
+  private async canDeleteTicket(
+    userId: number,
+    ticketNo: string,
+    userPermissions: number[]
+  ): Promise<boolean> {
+    // ตรวจสอบ permission แบบตรง ๆ
+    if (userPermissions.includes(4)) return true; // DELETE_TICKET = 4
+
+    // ตรวจสอบว่าเป็นเจ้าของตั๋ว
+    const owner = await this.isTicketOwnerByNo(userId, ticketNo, userPermissions);
+    return owner;
+  }
+
+  // ===================== View Tickets =====================
+
+  private async canViewTicketDetail(userId: number, ticketNo: string): Promise<boolean> {
+    if (!userId) return false;
+
+    const numericUserId = typeof userId === 'string' ? parseInt(userId) : userId;
+    if (isNaN(numericUserId)) return false;
+
+    // ดึงสิทธิ์จาก DB
+    const userPermissions: number[] = await this.ticketService.checkUserPermissions(numericUserId);
+    console.log('📋 User permissions:', userPermissions);
+
+    // VIEW_ALL_TICKETS = 13
+    if (userPermissions.includes(13)) return true;
+
+    // Role ที่ต้องตรวจสอบเจ้าของตั๋ว (role_id = 12)
+    if (userPermissions.includes(12)) {
+      if (!ticketNo) return false;
+      
+      const ticket = await this.ticketService.getTicketByNo(ticketNo);
+      if (!ticket) return false;
+      
+      return ticket.create_by === numericUserId;
+    }
+
+    // TRACK_TICKET = 2
+    if (userPermissions.includes(2)) return true;
+
+    // ถ้า user เป็นเจ้าของตั๋ว
+    if (ticketNo) {
+      const owner = await this.isTicketOwnerByNo(numericUserId, ticketNo, userPermissions);
+      if (owner) return true;
+    }
+
+    return false;
+  }
+
+  private async canViewAllTicket(userId: number, ticket_no: string): Promise<boolean> {
+    if (!userId) return false;
+
+    const numericUserId = typeof userId === 'string' ? parseInt(userId) : userId;
+    if (isNaN(numericUserId)) return false;
+
+    // ดึงสิทธิ์จาก DB
+    const userPermissions: number[] = await this.ticketService.checkUserPermissions(numericUserId);
+    console.log('📋 User permissions:', userPermissions);
+
+    // กำหนด roles ที่อนุญาตให้ดูตั๋ว
+    const allowRoles = [2, 12, 13];
+
+    // ถ้า user มีสิทธิ์ใด ๆ ใน allowRoles ให้ผ่าน
+    if (userPermissions.some(p => allowRoles.includes(p))) {
+      // ตรวจสอบเฉพาะ role_id = 12 ว่าเป็นเจ้าของตั๋วหรือไม่
+      if (userPermissions.includes(12) && ticket_no) {
+        const tickets = await this.ticketService.getTicketsByCreator(userId);
+        if (tickets && tickets.length) {
+          const ticketOwnerId = tickets[0].create_by;
+          return ticketOwnerId === numericUserId;
+        }
+        return false;
+      }
+      return true;
+    }
+
+    // ถ้า user เป็นเจ้าของตั๋วโดยตรง
+    if (ticket_no) {
+      const owner = await this.isTicketOwnerByNo(numericUserId, ticket_no, userPermissions);
+      if (owner) return true;
+    }
+
+    return false;
+  }
+
+  private async canCreateTicket(userId: number): Promise<boolean> {
+    try {
+        console.log('🔐 === canCreateTicket Debug ===');
+        console.log('Input userId:', userId);
+
+        if (!userId) {
+            console.log('❌ userId is invalid');
+            return false;
+        }
+
+        const numericUserId = typeof userId === 'string' ? parseInt(userId) : userId;
+        if (isNaN(numericUserId)) {
+            console.log('❌ userId is not a valid number:', userId);
+            return false;
+        }
+
+        // ดึง role ของ user จริงจาก DB
+        const userRoles: number[] = await this.permissionService.get_permission_byOne(numericUserId);
+        console.log('User roles from DB:', userRoles);
+
+        // ตรวจสอบ role_id = 1
+        const hasRequiredRole = userRoles.some(roleId => roleId === 1);
+        console.log(`User has role_id=1: ${hasRequiredRole ? '✅' : '❌'}`);
+
+        return hasRequiredRole;
+    } catch (error) {
+        console.error('💥 Error in canCreateTicket:', error);
+        return false;
+    }
+  }
+
+  private async canSolveProblem(userId: number): Promise<boolean> {
+    try {
+      // ดึง role ของ user จาก DB
+      const userRoles: number[] = await this.ticketService.checkUserPermissions(userId);
+
+      // ถ้ามี role_id 8 => สามารถแก้ปัญหาได้
+      return userRoles.includes(8);
+    } catch (error) {
+      console.error('Error checking solve permission:', error);
       return false;
     }
+  }
+
+  // ✅ ฟังก์ชันตรวจสอบสิทธิ์ในการเปลี่ยนสถานะ (เฉพาะ role_id = 5)
+  private async canChangeTicketStatus(userId: number): Promise<boolean> {
+    if (!userId) return false;
+
+    const numericUserId = typeof userId === 'string' ? parseInt(userId) : userId;
+    if (isNaN(numericUserId)) return false;
+
+    try {
+      // ดึง role ของผู้ใช้จาก DB
+      const roles: number[] = await this.ticketService.checkUserPermissions(numericUserId);
+      console.log('📋 User roles:', roles);
+
+      // ตรวจสอบว่า roles มี role_id = 5 หรือไม่
+      const hasPermission = roles.some(role => role === 5);
+      console.log(`🔒 Can change status: ${hasPermission}`);
+      return hasPermission;
+    } catch (error) {
+      console.error('💥 Error checking change status permission:', error);
+      return false;
+    }
+  }
+
+  private async canRestoreTicket(userId: number, ticket_no: string): Promise<boolean> {
+    if (!userId || !ticket_no) return false;
+
+    const numericUserId = typeof userId === 'string' ? parseInt(userId) : userId;
+    if (isNaN(numericUserId)) return false;
+
+    try {
+      // 1️⃣ ตรวจสอบ role_id
+      const roles: number[] = await this.ticketService.checkUserPermissions(numericUserId);
+      if (!roles.includes(11)) return false;
+
+      // 2️⃣ ตรวจสอบวันลบตั๋ว
+      const ticket = await this.ticketService.getTicketByNo(ticket_no);
+      if (!ticket || !ticket.deleted_at) return false;
+
+      const deletedAt = new Date(ticket.deleted_at);
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      return deletedAt > sevenDaysAgo;
+    } catch (error) {
+      console.error('💥 Error checking restore permission:', error);
+      return false;
+    }
+  }
+
+  private async canViewTicketDelete(userId: number, ticketNo?: string): Promise<boolean> {
+    if (!userId) return false;
+
+    const numericUserId = typeof userId === 'string' ? parseInt(userId) : userId;
+    if (isNaN(numericUserId)) return false;
+
+    // ดึง role_id ของ user จาก DB
+    const userRoles: number[] = await this.ticketService.checkUserPermissions(numericUserId);
+    console.log('📋 User roles:', userRoles);
+
+    // ตรวจสอบ role_id 13 สามารถดูได้เลย
+    if (userRoles.includes(13)) return true;
+
+    // role_id 12 ต้องเป็นเจ้าของตั๋ว
+    if (userRoles.includes(12)) {
+      if (!ticketNo) return false;
+
+      // ดึงตั๋วจาก DB
+      const tickets = await this.ticketService.getTicketsByCreator(userId); 
+      if (!tickets || !tickets.length) return false;
+
+      const ticketOwnerId = tickets[0].create_by;
+      return ticketOwnerId === numericUserId;
+    }
+
+    return false;
+  }
+
+  private canRestoredate(deletedAt?: Date | string | null): boolean {
+    if (!deletedAt) return false;
+
+    const deletedDate = deletedAt instanceof Date ? deletedAt : new Date(deletedAt);
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    return deletedDate > sevenDaysAgo;
+  }
+
+  private canSatisfaction(roleId: number): boolean {
+    return roleId === 14;
+  }
+
+  private async sendTicketNotification(
+    ticketNo: string,
+    actionType: 'NEW' | 'STATUS_CHANGE' | 'ASSIGN',
+    payload: { userId: number; assignedToUserId?: number; newStatusId?: number }
+  ) {
+    const normalizedTicketNo = ticketNo.toUpperCase().startsWith('T')
+      ? ticketNo.toUpperCase()
+      : 'T' + ticketNo.toUpperCase();
+
+    let targetUserIds: number[] = [];
+
+    switch (actionType) {
+      case 'NEW':
+        targetUserIds = await this.userService.getUserIdsByRole([15, 16]);
+        break;
+      case 'STATUS_CHANGE':
+        targetUserIds = await this.userService.getUserIdsByRole([2], { createBy: payload.userId });
+        break;
+      case 'ASSIGN':
+        if (payload.assignedToUserId) {
+          const hasRole9 = await this.userService.hasRole(payload.assignedToUserId, [9]);
+          if (hasRole9) targetUserIds.push(payload.assignedToUserId);
+        }
+        break;
+    }
+
+    await Promise.all(
+      targetUserIds.map((uid) =>
+        this.notiService.createNotification({
+          ticket_no: normalizedTicketNo,
+          user_id: uid,
+          notification_type: actionType as any, // cast เป็น NotificationType หรือแปลงให้ตรง enum
+          title: `Ticket ${normalizedTicketNo} Notification`,
+          message: `Action: ${actionType}`,
+          is_read: false,
+          email_sent: false,
+        }),
+      ),
+    );
   }
   
   @UseGuards(JwtAuthGuard)
   @Post('saveTicket')
-  @requirePermissions(permissionEnum.CREATE_TICKET)
   async saveTicket(@Body() dto: any, @Request() req: any): Promise<any> {
-    console.log('Request body received:', dto);
-    console.log('Request user object:', req.user);
-
-    // Extract user ID
-    let userId = null;
-    if (req.user) {
-      userId = req.user.id || req.user.sub || req.user.user_id || req.user.userId;
-    }
-
-    console.log('Extracted userId:', userId);
+    const userId = req.user?.id || req.user?.sub || req.user?.user_id || req.user?.userId;
 
     if (!userId) {
-      return {
-        code: 2,
-        message: 'User not authenticated properly',
-        data: null,
-      };
+        return { code: 2, message: 'User not authenticated properly', data: null };
     }
 
-    // Validate request body
-    if (!dto) {
-      return {
-        code: 2,
-        message: 'Request body is required',
-        data: null,
-      };
+    const canCreate = await this.canCreateTicket(userId);
+    if (!canCreate) {
+        return { code: 2, message: 'User does not have the required role to create a ticket', data: null };
     }
 
-    // Validate and transform data
+    // ส่วน validate และ save ticket เหมือนเดิม
     const transformedDto = {
-      ticket_id: dto.ticket_id ? parseInt(dto.ticket_id) : undefined,
-      project_id: parseInt(dto.project_id),
-      categories_id: parseInt(dto.categories_id),
-      issue_description: dto.issue_description,
-      status_id: dto.status_id ? parseInt(dto.status_id) : 1,
-      issue_attachment: dto.issue_attachment || null,
+        ticket_id: dto.ticket_id ? parseInt(dto.ticket_id) : undefined,
+        project_id: parseInt(dto.project_id),
+        categories_id: parseInt(dto.categories_id),
+        issue_description: dto.issue_description,
+        status_id: dto.status_id ? parseInt(dto.status_id) : 1,
+        issue_attachment: dto.issue_attachment || null,
     };
 
-    // Validate required fields after transformation
-    if (isNaN(transformedDto.project_id)) {
-      return {
-        code: 2,
-        message: 'project_id must be a valid number',
-        data: null,
-      };
-    }
-
-    if (isNaN(transformedDto.categories_id)) {
-      return {
-        code: 2,
-        message: 'categories_id must be a valid number',
-        data: null,
-      };
-    }
-
-    if (!transformedDto.issue_description || transformedDto.issue_description.trim() === '') {
-      return {
-        code: 2,
-        message: 'issue_description is required',
-        data: null,
-      };
-    }
-
     try {
-      const result = await this.ticketService.saveTicket(transformedDto, userId);
-      return {
-        code: 1,
-        message: 'Success',
-        ticket_id: result.ticket_id,
-        ticket_no: result.ticket_no
-      };
+        const result = await this.ticketService.saveTicket(transformedDto, userId);
+        return {
+            code: 1,
+            message: 'Success',
+            ticket_id: result.ticket_id,
+            ticket_no: result.ticket_no,
+        };
     } catch (error) {
-      console.error('Error in saveTicket:', error);
-      return {
-        code: 2,
-        message: error.message || 'เกิดข้อผิดพลาด',
-        data: null,
-      };
+        return { code: 2, message: error.message || 'เกิดข้อผิดพลาด', data: null };
     }
   }
 
   // ✅ แก้ไข getTicketData ให้ใช้ ticket_no แทน ticket_id
   @UseGuards(JwtAuthGuard)
   @Post('getTicketData')
-  @requirePermissions(permissionEnum.TRACK_TICKET, permissionEnum.VIEW_OWN_TICKETS, permissionEnum.VIEW_ALL_TICKETS)
-  @RequireRoles(ROLES.ADMIN, ROLES.SUPPORTER, ROLES.USER)
   async getTicketData(@Body() body: { ticket_no: string }, @Req() req: any) {
     try {
-      console.log('🎫 === getTicketData Debug Start ===');
-      
-      // ✅ Debug user object ก่อน
-      this.debugUserObject(req);
-      
-      // ✅ Extract userId พร้อม debug
       const userId = this.extractUserId(req);
-      console.log('Final extracted userId:', userId);
-      
-      // ✅ ตรวจสอบว่า userId มีค่าหรือไม่
       if (!userId) {
-        console.log('❌ No userId found, returning error');
-        return {
-          code: 2,
-          message: 'ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่',
-          data: null,
-        };
+        return { code: 2, message: 'ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่', data: null };
       }
-      
-      let ticketNo = body.ticket_no;
-      
+
+      const ticketNo = body.ticket_no?.toString().trim().toUpperCase();
       if (!ticketNo) {
-        return {
-          code: 2,
-          message: 'กรุณาส่ง ticket_no',
-          data: null,
-        };
+        return { code: 2, message: 'กรุณาส่ง ticket_no', data: null };
       }
 
-      // ✅ Normalize ticket_no
-      ticketNo = ticketNo.toString().trim().toUpperCase();
-      if (!ticketNo.startsWith('T')) {
-        ticketNo = 'T' + ticketNo;
-      }
-      
-      console.log('Processing ticket:', ticketNo, 'for user:', userId);
-
-      // ✅ ตรวจสอบ format
-      if (!this.isValidTicketNoFormat(ticketNo)) {
-        return {
-          code: 2,
-          message: 'รูปแบบ ticket_no ไม่ถูกต้อง (ต้องเป็น Txxxxxxxxx)',
-          data: null,
-        };
+      // ตรวจสอบสิทธิ์จาก role_id
+      const canView = await this.canViewTicketDetail(userId, ticketNo);
+      if (!canView) {
+        return { code: 2, message: 'ไม่มีสิทธิ์ในการดูตั๋วปัญหานี้', data: null };
       }
 
-      // check user is owner?
-      const isOwner = await this.isTicketOwnerByNo(userId, ticketNo);
-      if (!isOwner) {
-        // if not must have view all
-        return {
-          code: 2,
-          message: 'ไม่มีสิทธิ์ในการดูตั๋วปัญหานี้',
-          data: null,
-        };
-      }
-
-      // ✅ ดึงข้อมูลตั๋ว
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const data = await this.ticketService.getTicketData(ticketNo, baseUrl);
 
-      console.log('🎫 === getTicketData Success ===');
-      return {
-        code: 1,
-        message: 'Success',
-        data,
-      };
+      return { code: 1, message: 'Success', data };
     } catch (error) {
-      console.error('💥 Error in getTicketData:', error);
-      
-      if (error instanceof ForbiddenException) {
-        return {
-          code: 2,
-          message: error.message,
-          data: null,
-        };
-      }
-      
-      return {
-        code: 2,
-        message: error.message || 'เกิดข้อผิดพลาด',
-        data: null,
-      };
+      console.error('Error in getTicketData:', error);
+      return { code: 2, message: error.message || 'เกิดข้อผิดพลาด', data: null };
     }
   }
 
   @Post('getAllTicket')
   @UseGuards(JwtAuthGuard)
-  @requirePermissions(permissionEnum.VIEW_ALL_TICKETS, permissionEnum.VIEW_OWN_TICKETS)
   async getAllTicket(@Request() req: any) {
     try {
       const userId = req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub;
@@ -613,27 +622,35 @@ export class TicketController {
         };
       }
 
-      const userPermissions = await this.ticketService.checkUserPermissions(userId);
-      const canViewAll = userPermissions.includes(permissionEnum.VIEW_ALL_TICKETS);
+      console.log('👤 Getting all tickets for userId:', userId);
 
-      let tickets;
-      if (canViewAll) {
-        tickets = await this.ticketService.getAllTicketWithoutFilter();
-      } else {
-        tickets = await this.ticketService.getTicketsByCreator(userId); // เฉพาะของตัวเอง
+      // ดึง tickets ทั้งหมดจาก DB
+      const allTickets = await this.ticketService.getAllTicket(userId);
+      console.log('📊 Total tickets from DB:', allTickets?.length || 0);
+
+      // ✅ แก้ไข: กำหนด type อย่างชัดเจน
+      const filteredTickets: any[] = [];
+      
+      for (const ticket of allTickets) {
+        const canView = await this.canViewAllTicket(userId, ticket.ticket_no);
+        if (canView) {
+          filteredTickets.push(ticket); // ✅ ตอนนี้ TypeScript รู้ type แล้ว
+        }
       }
+
+      console.log('✅ Filtered tickets count:', filteredTickets.length);
 
       return {
         success: true,
-        data: tickets,
+        data: filteredTickets,
         debug: {
           userId: userId,
-          ticketCount: tickets.length,
-          permission: canViewAll ? 'VIEW_ALL' : 'VIEW_OWN'
+          totalTickets: allTickets?.length || 0,
+          filteredCount: filteredTickets.length,
         }
       };
     } catch (error) {
-      console.error('Error in getAllTicket:', error);
+      console.error('💥 Error in getAllTicket:', error);
       return {
         success: false,
         message: error.message
@@ -643,16 +660,30 @@ export class TicketController {
 
   @UseGuards(JwtAuthGuard)
   @Post('saveSupporter/:ticket_no')
-  @requirePermissions(permissionEnum.SOLVE_PROBLEM)
   @UseInterceptors(FilesInterceptor('attachments'))
   async saveSupporter(
     @Param('ticket_no') ticketNo: string,
     @Body() formData: any,
     @UploadedFiles() files: Express.Multer.File[],
     @Request() req: any
-  ){
+  ) {
     try {
-      const userId = req.user.id;
+      const userId = req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub;
+      if (!userId) {
+        return {
+          success: false,
+          message: 'User ID not found in token'
+        };
+      }
+
+      // ✅ ตรวจสอบ role_id ของ user
+      const canSolve = await this.canSolveProblem(userId);
+      if (!canSolve) {
+        return {
+          success: false,
+          message: 'User does not have permission to solve problems'
+        };
+      }
 
       const result = await this.ticketService.saveSupporter(
         ticketNo,
@@ -667,6 +698,7 @@ export class TicketController {
         data: result
       };
     } catch (error) {
+      console.error('Error in saveSupporter:', error);
       throw new HttpException(
         {
           success: false,
@@ -680,12 +712,7 @@ export class TicketController {
 
   @UseGuards(JwtAuthGuard)
   @Post('getAllMasterFilter')
-  @requirePermissions(
-    permissionEnum.VIEW_ALL_TICKETS,
-    permissionEnum.VIEW_OWN_TICKETS,
-    permissionEnum.TRACK_TICKET
-  )
-  async getAllMAsterFilter(@Req() req) {
+  async getAllMasterFilter(@Req() req) {
     try {
       console.log('📋 === getAllMasterFilter Debug ===');
 
@@ -696,11 +723,20 @@ export class TicketController {
         throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
       }
 
+      // ✅ ตรวจสอบสิทธิ์การดูตั๋ว
+      // const canView = await this.isTicketOwner(userId);
+      // if (!canView) {
+      //   throw new ForbiddenException('ไม่มีสิทธิ์ในการเข้าถึงข้อมูลนี้');
+      // }
+
       // ✅ ดึงข้อมูล Master Filter
       const result = await this.ticketService.getAllMAsterFilter(userId);
       console.log('✅ getAllMasterFilter success');
 
-      return result;
+      return {
+        success: true,
+        data: result
+      };
     } catch (error) {
       console.error('💥 Error in getAllMasterFilter:', error);
 
@@ -713,13 +749,36 @@ export class TicketController {
   }
 
   // ✅ Specific ticket routes (with "ticket" prefix) come BEFORE generic :id route
-  @Get('tickets/:ticket_no')
+ @Get('tickets/:ticket_no')
   @UseGuards(JwtAuthGuard)
-  @requirePermissions(permissionEnum.TRACK_TICKET, permissionEnum.VIEW_ALL_TICKETS, permissionEnum.TRACK_TICKET)
-  async getTicketByNo(@Param('ticket_no') ticket_no: string, @Req() req: any) {
+  async getTicketByNo(@Param('ticket_no') ticketNo: string, @Req() req: any) {
     try {
+      // ✅ ดึง userId จาก token
+      const userId = req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub;
+      if (!userId) {
+        return {
+          code: 2,
+          message: 'ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่',
+          data: null,
+        };
+      }
+
+      // ✅ ตรวจสอบสิทธิ์ก่อน
+      const userPermissions: number[] = await this.ticketService.checkUserPermissions(userId);
+      console.log('User permission:', userPermissions)
+
+      const canAccess = await this.canAccessTicketByNo(userId, ticketNo, userPermissions);
+      if (!canAccess) {
+        return {
+          code: 2,
+          message: 'คุณไม่มีสิทธิ์เข้าถึงตั๋วนี้',
+          data: null,
+        };
+      }
+
+      // ✅ ดึงข้อมูลตั๋ว
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const data = await this.ticketService.getTicketData(ticket_no, baseUrl);
+      const data = await this.ticketService.getTicketData(ticketNo, baseUrl);
 
       return {
         code: 1,
@@ -727,7 +786,7 @@ export class TicketController {
         data,
       };
     } catch (error) {
-      console.error('Error:', error.message);
+      console.error('Error in getTicketByNo:', error);
       return {
         code: 2,
         message: error.message || 'เกิดข้อผิดพลาด',
@@ -738,7 +797,6 @@ export class TicketController {
 
   @Put('tickets/:ticket_no')
   @UseGuards(JwtAuthGuard)
-  @requirePermissions(permissionEnum.EDIT_TICKET)
   async updateTicketByNo(
     @Param('ticket_no') ticket_no: string,
     @Body() updateDto: UpdateTicketDto,
@@ -746,7 +804,7 @@ export class TicketController {
   ) {
     try {
       const userId = this.extractUserId(req);
-      
+
       if (!userId) {
         return {
           code: 2,
@@ -755,6 +813,21 @@ export class TicketController {
         };
       }
 
+      // ✅ ตรวจสอบสิทธิ์ก่อนแก้ไข
+
+      const userPermissions: number[] = await this.ticketService.checkUserPermissions(userId);
+      console.log('User permission:', userPermissions)
+
+      const canEdit = await this.canEditTicket(userId, ticket_no, userPermissions);
+      if (!canEdit) {
+        return {
+          code: 2,
+          message: 'คุณไม่มีสิทธิ์ในการแก้ไขตั๋วนี้',
+          data: null,
+        };
+      }
+
+      // ✅ เรียก service เพื่ออัปเดตตั๋ว
       const ticket = await this.ticketService.updateTicket(ticket_no, updateDto, userId);
 
       return {
@@ -774,7 +847,6 @@ export class TicketController {
 
   @UseGuards(JwtAuthGuard)
   @Patch('updateTicketStatus/:id')
-  @requirePermissions(permissionEnum.CHANGE_STATUS)
   @ApiOperation({ summary: 'Update ticket status and log history' })
   @ApiParam({ name: 'id', description: 'Ticket ID' })
   @ApiResponse({ status: 200, description: 'Ticket status updated successfully' })
@@ -789,14 +861,22 @@ export class TicketController {
     @Request() req: any,
   ) {
     try {
-      console.log(`🔄 Updating ticket ${ticketId} status to ${body.status_id}`);
-
       const userId = this.extractUserId(req);
       if (!userId) {
         throw new HttpException('User not authenticated properly', HttpStatus.UNAUTHORIZED);
       }
 
-      // ✅ Validate input
+      // ✅ ตรวจสอบสิทธิ์ด้วยฟังก์ชันแยก
+      const canChange = await this.canChangeTicketStatus(userId);
+      if (!canChange) {
+        return {
+          code: 2,
+          message: 'คุณไม่มีสิทธิ์เปลี่ยนสถานะตั๋ว',
+          data: null,
+        };
+      }
+
+      // ✅ Validate status_id
       if (!body.status_id || isNaN(body.status_id)) {
         return {
           code: 2,
@@ -805,7 +885,6 @@ export class TicketController {
         };
       }
 
-      // ✅ เปลี่ยนจาก updateTicketStatus เป็น updateTicketStatusAndHistory
       const result = await this.ticketStatusService.updateTicketStatusAndHistory(
         ticketId, 
         body.status_id, 
@@ -831,52 +910,35 @@ export class TicketController {
 
   // ✅ ลบตั๋วด้วย ticket_no
   @Delete('tickets/:ticket_no')
-  @requirePermissions(permissionEnum.DELETE_TICKET)
   @UseGuards(JwtAuthGuard)
   async deleteTicketByNo(
     @Param('ticket_no') ticket_no: string,
     @Request() req: any
   ) {
     try {
-      console.log(`🗑️ Attempting to delete ticket: ${ticket_no}`);
-      
       const userId = this.extractUserId(req);
-      
       if (!userId) {
-        console.log('❌ User not authenticated');
-        return {
-          code: 2,
-          message: 'User not authenticated',
-          data: null,
-        };
+        return { code: 2, message: 'User not authenticated', data: null };
       }
 
-      console.log(`👤 User ID: ${userId}`);
+      // ✅ ตรวจสอบสิทธิ์ก่อนลบ
+      const userPermissions: number[] = await this.ticketService.checkUserPermissions(userId);
+      console.log('User permission:', userPermissions)
 
-      console.log('✅ Proceeding with soft delete...');
+      const canDelete = await this.canDeleteTicket(userId, ticket_no, userPermissions);
+      if (!canDelete) {
+        return { code: 2, message: 'คุณไม่มีสิทธิ์ลบตั๋วนี้', data: null };
+      }
+
       await this.ticketService.softDeleteTicket(ticket_no, userId);
-      
-      console.log('✅ Ticket deleted successfully');
+
       return {
         code: 1,
         message: 'ลบตั๋วสำเร็จ',
-        data: {
-          ticket_no: ticket_no,
-          deleted_by: userId,
-          deleted_at: new Date().toISOString()
-        },
+        data: { ticket_no, deleted_by: userId, deleted_at: new Date().toISOString() },
       };
     } catch (error) {
       console.error('💥 Error deleting ticket:', error);
-      
-      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
-        return {
-          code: 2,
-          message: error.message,
-          data: null,
-        };
-      }
-      
       return {
         code: 2,
         message: error.message || 'เกิดข้อผิดพลาดในการลบตั๋ว',
@@ -886,49 +948,37 @@ export class TicketController {
   }
 
   // ✅ กู้คืนตั๋ว
-  @Post('tickets/restore/:ticket_no')
+  @Post('tickets/restore/:ticker_no')
   @UseGuards(JwtAuthGuard)
-  @requirePermissions(permissionEnum.RESTORE_TICKET)
   async restoreTicketByNo(
     @Param('ticket_no') ticket_no: string,
     @Request() req: any
   ) {
     try {
-      console.log(`🔄 Attempting to restore ticket: ${ticket_no}`);
-      
       const userId = this.extractUserId(req);
-      
       if (!userId) {
-        return {
-          code: 2,
-          message: 'User not authenticated',
-          data: null,
-        };
+        return { code: 2, message: 'User not authenticated', data: null };
+      }
+
+      // ✅ ตรวจสอบสิทธิ์ก่อน restore
+      const canRestore = await this.canRestoreTicket(userId, ticket_no);
+      if (!canRestore) {
+        return { code: 2, message: 'คุณไม่มีสิทธิ์กู้คืนตั๋ว', data: null };
       }
 
       await this.ticketService.restoreTicketByNo(ticket_no, userId);
 
-      console.log('✅ Ticket restored successfully');
       return {
         code: 1,
         message: 'กู้คืนตั๋วสำเร็จ',
         data: {
-          ticket_no: ticket_no,
+          ticket_no,
           restored_by: userId,
           restored_at: new Date().toISOString()
         },
       };
     } catch (error) {
       console.error('💥 Error restoring ticket:', error);
-      
-      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
-        return {
-          code: 2,
-          message: error.message,
-          data: null,
-        };
-      }
-      
       return {
         code: 2,
         message: error.message || 'เกิดข้อผิดพลาดในการกู้คืน',
@@ -938,16 +988,34 @@ export class TicketController {
   }
 
   // ✅ ดูรายการตั๋วที่ถูกลบ (สำหรับ admin)
+  // ✅ ดูรายการตั๋วที่ถูกลบ (สำหรับผู้ที่มีสิทธิ์ดูทั้งหมด)
   @Get('tickets/deleted')
   @UseGuards(JwtAuthGuard)
-  @requirePermissions(permissionEnum.VIEW_ALL_TICKETS)
-  @RequireRoles(ROLES.ADMIN, ROLES.SUPPORTER)
   async softDeleteTicket(@Request() req: any) {
     try {
       const userId = this.extractUserId(req);
 
+      if (!userId) {
+        return {
+          code: 2,
+          message: 'ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่',
+          data: null,
+        };
+      }
+
+      // ✅ ตรวจสอบสิทธิ์โดยใช้ canViewAllTicket
+      const canView = await this.canViewTicketDelete(userId);
+      if (!canView) {
+        return {
+          code: 2,
+          message: 'คุณไม่มีสิทธิ์ดูรายการตั๋วที่ถูกลบ',
+          data: null,
+        };
+      }
+
+      // ✅ ดึงรายการตั๋วที่ถูกลบ
       const deletedTickets = await this.ticketService.getDeletedTickets();
-      
+
       return {
         code: 1,
         message: 'ดึงรายการตั๋วที่ถูกลบสำเร็จ',
@@ -967,19 +1035,29 @@ export class TicketController {
   async getDeletedTickets(@Request() req: any) {
     try {
       const userId = this.extractUserId(req);
-      
-      if (!await this.checkPermission(userId!, [permissionEnum.VIEW_ALL_TICKETS])) {
+      if (!userId) {
+        return {
+          code: 2,
+          message: 'ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่',
+          data: null,
+        };
+      }
+
+      // ✅ ตรวจสอบสิทธิ์การดูตั๋วที่ถูกลบตาม role_id = [12,13]
+      const canView = await this.canViewTicketDelete(userId);
+      if (!canView) {
         throw new ForbiddenException('ไม่มีสิทธิ์ในการดูตั๋วที่ถูกลบ');
       }
 
-      // ✅ เรียกจาก service และจัดการ undefined ใน Controller
+      // ✅ ดึงข้อมูลตั๋วที่ถูกลบ
       const deletedTickets = await this.ticketService.getDeletedTickets();
-      
+
+      // ✅ เพิ่ม can_restore
       const processedTickets = deletedTickets.map(ticket => ({
         ...ticket,
-        can_restore: ticket.update_date ? this.canRestoreTicket(ticket.update_date) : false
+        can_restore: ticket.update_date ? this.canRestoredate(ticket.deleted_at) : false
       }));
-      
+
       return {
         code: 1,
         message: 'ดึงรายการตั๋วที่ถูกลบสำเร็จ',
@@ -995,21 +1073,10 @@ export class TicketController {
     }
   }
 
-  // ✅ ตรวจสอบว่ากู้คืนได้หรือไม่
-  private canRestoreTicket(deletedAt: Date): boolean {
-    if (!deletedAt) return false;
-    
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
-    return deletedAt > sevenDaysAgo;
-  }
-
   // rating from user
   @Post('satisfaction/:ticket_no')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
-  @requirePermissions(permissionEnum.SATISFACTION)
   async saveSatisfaction(
     @Param('ticket_no') ticketNo: string,
     @Body() createSatisfactionDto: CreateSatisfactionDto,
@@ -1017,6 +1084,12 @@ export class TicketController {
   ) {
     try {
       const userId = req.user?.id;
+      const roleId = req.user?.role_id;
+
+      // ✅ เช็คสิทธิ์ role_id = 14
+      if (!this.canSatisfaction(roleId)) {
+        throw new ForbiddenException('ไม่มีสิทธิ์ให้คะแนนความพึงพอใจ');
+      }
 
       const result = await this.ticketService.saveSatisfaction(
         ticketNo,
@@ -1044,18 +1117,32 @@ export class TicketController {
   // ตรวจสอบสิทธิ์เฉพาะ
   @Post('check-permission')
   @UseGuards(JwtAuthGuard)
-  @requirePermissions(permissionEnum.VIEW_ALL_TICKETS)
-  async checkSpecificPermission(@Body() body: { permissions: number[] }, @Request() req: any) {
+  async checkSpecificPermission(
+    @Body() body: { permissions?: number[], role_ids?: number[] },
+    @Request() req: any
+  ) {
     try {
       const userId = this.extractUserId(req);
-      const hasPermission = await this.checkPermission(userId!, body.permissions);
+      const roleId = req.user?.role_id;
+
+      let hasPermission = true;
+
+      if (body.permissions?.length) {
+        hasPermission = await this.checkPermission(userId!, body.permissions);
+      }
+
+      if (body.role_ids?.length) {
+        hasPermission = hasPermission && body.role_ids.includes(roleId);
+      }
       
       return {
         success: true,
         data: {
           user_id: userId,
+          role_id: roleId,
           has_permission: hasPermission,
-          required_permissions: body.permissions
+          required_permissions: body.permissions || [],
+          required_roles: body.role_ids || []
         }
       };
     } catch (error) {
@@ -1126,35 +1213,26 @@ export class TicketController {
 
   @UseGuards(JwtAuthGuard)
   @Get(':id/status')
-  @requirePermissions(permissionEnum.TRACK_TICKET, permissionEnum.VIEW_ALL_TICKETS, permissionEnum.VIEW_OWN_TICKETS)
   async getTicketStatus(
     @Param('id', ParseIntPipe) ticketId: number,
     @Req() req: any
   ) {
     try {
-      // เพิ่ม debug logs
       console.log('🚀 Request started for ticket:', ticketId);
-      console.log('🔍 Request headers:', req.headers);
-      console.log('🔍 Request user:', req.user);
-      
+
       const userId = this.extractUserId(req);
-      console.log('👤 Extracted user ID:', userId);
-      
       if (!userId) {
-        console.log('❌ User ID extraction failed');
         throw new UnauthorizedException('Cannot extract user information from token');
       }
 
-      const languageId = this.getLanguage(req);
-      console.log('🌐 Language detected:', languageId);
-      
-      this.logRequestInfo(req, {
-        ticketId,
-        detectedLanguage: languageId,
-        userId
-      });
+      // ✅ ตรวจสอบสิทธิ์การเข้าถึงด้วย role
+      const userPermissions = req.user.permission || [];
+      const hasAccess = await this.canAccessTicket(userId, ticketId, userPermissions)
+      if (!hasAccess) {
+        throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงสถานะตั๋วปัญหานี้');
+      }
 
-      console.log(`🎫 Getting status for ticket ${ticketId}, language: ${languageId}`);
+      const languageId = this.getLanguage(req);
 
       const ticketStatus = await this.ticketStatusService.getTicketStatusWithName(
         ticketId,
@@ -1177,16 +1255,15 @@ export class TicketController {
       
     } catch (error) {
       console.error('💥 Error getting ticket status:', error);
-      console.error('💥 Error stack:', error.stack);
-      
-      if (error instanceof UnauthorizedException) {
+
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof ForbiddenException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
-      
-      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
-        throw error;
-      }
-      
+
       return {
         code: 0,
         message: 'ไม่สามารถดึงสถานะตั๋วปัญหาได้',
@@ -1365,63 +1442,33 @@ export class TicketController {
     }
   }
 
-  // ✅ Get ticket notifications with proper validation
-  @UseGuards(JwtAuthGuard)
   @Get('notification/:ticket_no')
-  @requirePermissions(permissionEnum.TRACK_TICKET, permissionEnum.VIEW_ALL_TICKETS, permissionEnum.VIEW_OWN_TICKETS)
+  @UseGuards(JwtAuthGuard)
   async getTicketNotifications(
-    @Param('ticket_no') ticket_no: string,
+    @Param('ticket_no') ticketNo: string,
     @Req() req: any,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '20'
   ) {
-    try {
-      const userId = this.extractUserId(req);
-      if (!userId) {
-        throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
-      }
+    const userId = this.extractUserId(req);
+    if (!userId) throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
 
-      // ✅ Normalize ticket_no
-      let normalizedTicketNo = ticket_no.toString().trim().toUpperCase();
-      if (!normalizedTicketNo.startsWith('T')) {
-        normalizedTicketNo = 'T' + normalizedTicketNo;
-      }
+    const userPermissions: number[] = await this.ticketService.checkUserPermissions(userId);
+    console.log('User permission:', userPermissions)
 
-      // ✅ Check permission to access ticket
-      const canAccess = await this.notiService.canAccessTicket(
-        userId,
-        normalizedTicketNo
-      );
-      if (!canAccess) {
-        throw new ForbiddenException('ไม่มีสิทธิ์ในการดูการแจ้งเตือนของตั๋วปัญหานี้');
-      }
+    const canAccess = await this.canAccessTicketByNo(userId, ticketNo, userPermissions);
+    if (!canAccess) throw new ForbiddenException('ไม่มีสิทธิ์ในการดูการแจ้งเตือนของตั๋วนี้');
 
-      const pageNumber = Math.max(1, parseInt(page) || 1);
-      const limitNumber = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const pageNumber = Math.max(1, parseInt(page) || 1);
+    const limitNumber = Math.min(100, Math.max(1, parseInt(limit) || 20));
 
-      const result = await this.notiService.getTicketNotifications(
-        normalizedTicketNo,
-        pageNumber,
-        limitNumber
-      );
+    const result = await this.notiService.getTicketNotifications(ticketNo, pageNumber, limitNumber);
 
-      return {
-        success: true,
-        data: result,
-        message: 'ดึงข้อมูลการแจ้งเตือนของ ticket สำเร็จ',
-      };
-    } catch (error) {
-      if (error instanceof ForbiddenException) {
-        throw error;
-      }
-      throw new HttpException(
-        {
-          success: false,
-          message: error.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลการแจ้งเตือน',
-        },
-        HttpStatus.BAD_REQUEST
-      );
-    }
+    return {
+      success: true,
+      data: result,
+      message: 'ดึงข้อมูลการแจ้งเตือนของ ticket สำเร็จ',
+    };
   }
 
   // ✅ Fixed: Mark single notification as read (was calling markAllAsRead)

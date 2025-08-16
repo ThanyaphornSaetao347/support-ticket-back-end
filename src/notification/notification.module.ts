@@ -8,6 +8,7 @@ import { Users } from '../users/entities/user.entity';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { TicketStatus } from '../ticket_status/entities/ticket_status.entity';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
+import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
 
 @Module({
   imports: [
@@ -16,7 +17,8 @@ import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.enti
       Users,
       Ticket,
       TicketStatus,
-      TicketAssigned
+      TicketAssigned,
+      UserAllowRole
     ]),
     MailerModule.forRoot({
       transport: {

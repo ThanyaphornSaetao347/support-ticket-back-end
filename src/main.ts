@@ -16,7 +16,7 @@ async function bootstrap() {
   // ตั้งค่า CORS สำหรับใช้ JWT Token
   app.enableCors({
     origin: [
-      'http://192.168.1.114:4200',
+      'http://192.168.1.85:4200',
       'http://localhost:4200',        // Angular dev server
     ],
     credentials: false,               // เปลี่ยนเป็น false เพราะไม่ใช้ cookie

@@ -5,12 +5,15 @@ import { Users } from './entities/user.entity';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto'
 import * as bcrypt from 'bcrypt';
+import { UserAllowRole } from 'src/user_allow_role/entities/user_allow_role.entity';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(Users)
     private userRepository: Repository<Users>,
+    @InjectRepository(UserAllowRole)
+    private readonly userAllowRoleRepo: Repository<UserAllowRole>,
   ) {}
 
   async findByEmail(email: string): Promise<Users> {
@@ -101,6 +104,33 @@ export class UserService {
         error: errorMessage
       };
     }
+  }
+
+  // ใน user.service.ts
+async getUserIdsByRole(
+  roleIds: number[],
+  filter?: { createBy?: number }
+): Promise<number[]> {
+  let query = this.userAllowRoleRepo
+    .createQueryBuilder('uar')
+    .select('uar.user_id', 'user_id')
+    .where('uar.role_id IN (:...roleIds)', { roleIds });
+
+  if (filter?.createBy) {
+    query = query.andWhere('uar.create_by = :createBy', { createBy: filter.createBy });
+  }
+
+  const result = await query.getRawMany();
+  return result.map(r => r.user_id);
+}
+
+
+  // เช็คว่า user มี role_id หรือไม่
+  async hasRole(userId: number, roleIds: number[]): Promise<boolean> {
+    const count = await this.userAllowRoleRepo.count({
+      where: roleIds.map(rid => ({ user_id: userId, role_id: rid })),
+    });
+    return count > 0;
   }
   // ลบฟังก์ชัน createUser เนื่องจากซ้ำซ้อนกับ create และไม่มีการเข้ารหัสรหัสผ่าน
 

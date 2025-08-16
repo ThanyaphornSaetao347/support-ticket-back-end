@@ -17,6 +17,8 @@ import { Satisfaction } from '../satisfaction/entities/satisfaction.entity';
 import { Users } from '../users/entities/user.entity';
 import { NotificationModule } from '../notification/notification.module';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
+import { PermissionModule } from '../permission/permission.module';
+import { UserModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.enti
     TicketStatusHistoryModule,
     TicketStatusModule,
     NotificationModule,
+    PermissionModule,
+    UserModule
   ],
   controllers: [TicketController, TicketAttachmentController],
   providers: [

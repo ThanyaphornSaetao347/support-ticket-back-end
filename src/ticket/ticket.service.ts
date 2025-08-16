@@ -50,60 +50,58 @@ export class TicketService {
   ) {}
 
   // ✅ แก้ไข checkTicketOwnership สำหรับ PostgreSQL
-  async checkTicketOwnership(userId: number, ticketId: number): Promise<any[]> {
+  async checkTicketOwnership(userId: number, ticketId: number, userPermissions: number[]): Promise<boolean> {
     try {
-      console.log(`🔍 Checking ownership: ticket ${ticketId}, user ${userId}`);
-      
-      // ตรวจสอบ parameters
-      if (!userId || !ticketId) {
-        console.log(`❌ Invalid parameters: userId=${userId}, ticketId=${ticketId}`);
-        return [];
+      if (!userId || !ticketId) return false;
+
+      // กำหนด role/permission ที่อนุญาตเข้าถึง
+      const allowRoles = [2, 12, 13];
+
+      // ถ้า user มี permission ใดใน allowRoles เลย ให้ผ่าน
+      if (allowRoles.some(role => userPermissions.includes(role))) {
+        return true;
       }
 
-      // ✅ ใช้ PostgreSQL syntax ($1, $2) และ create_by
+      // ตรวจสอบว่า user เป็นเจ้าของ ticket
       const query = `
-        SELECT id, ticket_no, create_by, create_date
+        SELECT id, ticket_no, create_by
         FROM ticket t
         WHERE t.id = $1 AND t.create_by = $2 AND t.isenabled = true
       `;
-      
       const result = await this.dataSource.query(query, [ticketId, userId]);
-      console.log(`✅ Ownership check result: found ${result.length} records`);
-      
-      return result || [];
+
+      return result.length > 0;
     } catch (error) {
-      console.error('💥 Error checking ticket ownership:', error);
-      console.error('Query parameters:', { ticketId, userId });
-      return [];
+      console.error('💥 Error in checkTicketOwnership:', error);
+      return false;
     }
   }
 
   // ✅ แก้ไข checkTicketOwnershipByNo สำหรับ PostgreSQL
-  async checkTicketOwnershipByNo(userId: number, ticketNo: string): Promise<any[]> {
+  async checkTicketOwnershipByNo(userId: number, ticketNo: string, userPermissions: number[]): Promise<boolean> {
     try {
-      console.log(`🔍 Checking ownership: ticket ${ticketNo}, user ${userId}`);
-      
-      // ตรวจสอบ parameters
-      if (!userId || !ticketNo) {
-        console.log(`❌ Invalid parameters: userId=${userId}, ticketNo=${ticketNo}`);
-        return [];
+      if (!userId || !ticketNo) return false;
+
+      // กำหนด role/permission ที่อนุญาตเข้าถึง
+      const allowRoles = [2, 12, 13];
+
+      // ถ้า user มี permission ใดใน allowRoles เลย ให้ผ่าน
+      if (allowRoles.some(role => userPermissions.includes(role))) {
+        return true;
       }
 
-      // ✅ ใช้ PostgreSQL syntax ($1, $2) และ create_by
+      // ตรวจสอบว่า user เป็นเจ้าของ ticket
       const query = `
-        SELECT id, ticket_no, create_by, create_date
+        SELECT id, ticket_no, create_by
         FROM ticket t
-        WHERE t.ticket_no = $1 AND t.create_by = $2 AND t.isenabled = true
+        WHERE t.id = $1 AND t.create_by = $2 AND t.isenabled = true
       `;
-      
       const result = await this.dataSource.query(query, [ticketNo, userId]);
-      console.log(`✅ Ownership check result: found ${result.length} records`);
-      
-      return result || [];
+
+      return result.length > 0;
     } catch (error) {
-      console.error('💥 Error checking ticket ownership by no:', error);
-      console.error('Query parameters:', { ticketNo, userId });
-      return [];
+      console.error('💥 Error in checkTicketOwnership:', error);
+      return false;
     }
   }
 
@@ -649,25 +647,34 @@ export class TicketService {
     try {
       console.log('getAllTicket called with userId:', userId);
 
-      const tickets = await this.ticketRepo
+      // ดึง permission ของ user
+      const userPermissions: number[] = await this.checkUserPermissions(userId);
+      const isViewAll = userPermissions.includes(13); // VIEW_ALL_TICKETS
+
+      const query = this.ticketRepo
         .createQueryBuilder('t')
         .select([
           't.ticket_no',
-          't.categories_id', 
+          't.categories_id',
           't.project_id',
           't.issue_description',
           't.status_id',
           't.create_by',
           't.create_date'
         ])
-        .where('t.create_by = :userId', { userId })
         .andWhere('t.isenabled = true')
-        .orderBy('t.create_date', 'DESC')
-        .getMany();
+        .orderBy('t.create_date', 'DESC');
+
+      // ถ้าไม่ได้เป็น role_id = 13 ให้ดูเฉพาะของตัวเอง
+      if (!isViewAll) {
+        query.andWhere('t.create_by = :userId', { userId });
+      }
+
+      const tickets = await query.getMany();
 
       console.log('Raw SQL result count:', tickets.length);
       console.log('Sample ticket:', tickets[0]);
-      
+
       return tickets;
     } catch (error) {
       console.log('Error in getAllTicket:', error.message);
@@ -677,44 +684,58 @@ export class TicketService {
 
   async getAllMAsterFilter(userId: number): Promise<any> {
     try {
-      // ดึง Categories
+      console.log('🔍 Starting getAllMAsterFilter for userId:', userId);
+      
+      // Categories
       const categories = await this.categoryRepo
-      .createQueryBuilder('tc')
-      .innerJoin('ticket_categories_language', 'tcl', 'tcl.category_id = tc.id AND tcl.language_id = :lang', {lang: 'th'})
-      .where('tc.isenabled = true')
-      .select(['tc.id AS id', 'tcl.name AS name'])
-      .getRawMany();
+        .createQueryBuilder('tc')
+        .innerJoin('ticket_categories_language', 'tcl', 'tcl.category_id = tc.id')
+        .where('tc.isenabled = true')
+        .andWhere('tcl.language_id = :lang', { lang: 'th' })
+        .select(['tc.id AS id', 'tcl.name AS name'])
+        .getRawMany();
 
-      // ดึง project of user
-      const projects = await this.projectRepo
-      .createQueryBuilder('p')
-      .innerJoin('customer_for_project', 'cp', 'cp.project_id = p.id')
-      .where('cp.user_id = :userId', { userId })
-      .andWhere('cp.isenabled = true')
-      .select(['p.id', 'p.name'])
-      .getMany();
+      console.log('✅ Categories found:', categories.length);
 
+      // ✅ Fixed Projects Query - ใช้ $1 แทน :userId
+      const projects = await this.projectRepo.query(`
+        SELECT 
+            p.id,
+            p.name
+        FROM project p
+        INNER JOIN customer_for_project cp ON cp.project_id = p.id
+        WHERE cp.user_id = $1 AND cp.isenabled = true
+      `, [userId]);
+      
+      console.log('✅ Projects found:', projects.length);
+
+      // Status
       const status = await this.statusRepo
-      .createQueryBuilder('ts')
-      .innerJoin('ticket_status_language', 'tsl', 'tsl.status_id = ts.id AND tsl.language_id = :lang', {lang: 'th'})
-      .where('ts.isenabled = true')
-      .select(['ts.id AS id', 'tsl.name AS name'])
-      .getRawMany();
+        .createQueryBuilder('ts')
+        .innerJoin('ticket_status_language', 'tsl', 'tsl.status_id = ts.id')
+        .where('ts.isenabled = true')
+        .andWhere('tsl.language_id = :lang', { lang: 'th' })
+        .select(['ts.id AS id', 'tsl.name AS name'])
+        .getRawMany();
+        
+      console.log('✅ Status found:', status.length);
 
       return {
         code: 1,
-        message: 'Seccess',
-        data: {
-          categories,
-          projects,
-          status,
-        },
+        message: 'Success',
+        data: { categories, projects, status },
       };
+      
     } catch (error) {
-      console.error('Error:', error.message);
+      console.error('❌ Error in getAllMAsterFilter:', {
+        message: error.message,
+        stack: error.stack,
+        userId
+      });
+      
       return {
         code: 2,
-        message: 'เกิดข้อผิดพลาด',
+        message: `เกิดข้อผิดพลาด: ${error.message}`,
         data: null,
       };
     }
@@ -742,27 +763,53 @@ export class TicketService {
     }
   }
 
-  async saveSupporter(ticketNo: string, formData: any, files: Express.Multer.File[], currentUserId: number) {
+  async getTicketByNo(ticket_no: string): Promise<Ticket> {
+    try {
+      const ticket = await this.findTicketByNo(ticket_no);
+      if (!ticket) {
+        throw new NotFoundException(`Ticket with id ${ticket_no} not found`);
+      }
+      return ticket;
+    } catch (error) {
+      console.error('Error in getTicketById:', error);
+      throw error;
+    }
+  }
+
+  async saveSupporter(
+    ticketNo: string,
+    formData: any,
+    files: Express.Multer.File[],
+    currentUserId: number
+  ) {
     const results = {};
-    
+
     if (!ticketNo) {
       throw new Error('ticket_no is required');
     }
 
     try {
-      // 1. Update Ticket fields พร้อมคำนวณเวลา
+      // 🔹 0. ดึงสิทธิ์ของ user
+      const userPermissions: number[] = await this.checkUserPermissions(currentUserId);
+
+      // 🔹 1. ตรวจสอบว่า role_id = 8 (SUPPORTER) หรือไม่
+      if (!userPermissions.includes(8)) {
+        throw new Error('Permission denied: You are not allowed to edit this ticket');
+      }
+
+      // 2. Update Ticket fields พร้อมคำนวณเวลา
       await this.updateTicketFieldsWithTimeCalculation(ticketNo, formData, currentUserId, results);
 
-      // 2. Handle Attachments
+      // 3. Handle Attachments
       if (files && files.length > 0) {
         const ticket = await this.ticketRepo.findOne({
           where: { ticket_no: ticketNo }
         });
-        
+
         if (!ticket) {
           throw new Error(`Ticket with ticket_no ${ticketNo} not found`);
         }
-        
+
         await this.createAttachments(files, ticket.id, currentUserId, results);
       }
 

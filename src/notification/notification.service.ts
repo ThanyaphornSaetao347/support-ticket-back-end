@@ -3,12 +3,13 @@ import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Users } from '../users/entities/user.entity';
 import { Ticket } from '../ticket/entities/ticket.entity';
 import { TicketStatus } from '../ticket_status/entities/ticket_status.entity';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 import { MailerService } from '@nestjs-modules/mailer';
+import { UserAllowRole } from 'src/user_allow_role/entities/user_allow_role.entity';
 
 @Injectable()
 export class NotificationService {
@@ -23,9 +24,53 @@ export class NotificationService {
     private readonly statusRepo: Repository<TicketStatus>,
     @InjectRepository(TicketAssigned)
     private readonly ticketAssignedRepo: Repository<TicketAssigned>,
+    @InjectRepository(UserAllowRole)
+    private readonly userAllowRoleRepo: Repository<UserAllowRole>,
     
     private readonly mailerService: MailerService
   ) {}
+
+  // สร้าง notification 1 รายการ
+  async createNotification(dto: CreateNotificationDto): Promise<Notification> {
+    const notification = this.notiRepo.create({
+      ticket_no: dto.ticket_no,
+      user_id: dto.user_id,
+      notification_type: dto.notification_type,
+      title: dto.title,
+      message: dto.message,
+      is_read: dto.is_read ?? false,
+      email_sent: dto.email_sent ?? false,
+      status_id: dto.status_id,
+    });
+
+    return this.notiRepo.save(notification);
+  }
+
+  // สร้าง notification หลายรายการพร้อมกัน (bulk)
+  async createNotificationsBulk(payload: {
+    ticket_no: string;
+    targetUserIds: number[];
+    notification_type: NotificationType;
+    title: string;
+    message?: string;
+    created_by: number;
+  }): Promise<Notification[]> {
+    const { ticket_no, targetUserIds, notification_type, title, message, created_by } = payload;
+
+    const createdNotifications = await Promise.all(
+      targetUserIds.map((uid) =>
+        this.createNotification({
+          ticket_no,
+          user_id: uid,
+          notification_type,
+          title,
+          message,
+        }),
+      ),
+    );
+
+    return createdNotifications;
+  }
 
   // ✅ สร้างการแจ้งเตือนสำหรับการเปลี่ยนแปลงสถานะ (สำหรับผู้แจ้ง)
   async createStatusChangeNotification(ticketNo: string, statusId: number) {
@@ -506,6 +551,18 @@ export class NotificationService {
       console.error('Error sending assignment email:', error);
       return false;
     }
+  }
+
+
+  private async getUserEmailsByRoles(roleIds: number[]): Promise<string[]> {
+    const userAllowRoles = await this.userAllowRoleRepo.find({
+      where: { role_id: In(roleIds) },
+      relations: ['user'], // ensure entity UserAllowRole มี relation 'user'
+    });
+
+    return userAllowRoles
+      .map(uar => uar.user?.email)
+      .filter((email): email is string => !!email);
   }
 
   // ✅ เพิ่ม method สำหรับส่ง HTML email
