@@ -37,6 +37,8 @@ import { Satisfaction } from './satisfaction/entities/satisfaction.entity';
 import { Notification } from './notification/entities/notification.entity';
 import { NotificationModule } from './notification/notification.module';
 import { PermissionModule } from './permission/permission.module';
+import { APP_GUARD } from '@nestjs/core';
+import { PermissionGuard } from './permission/permission.guard';
 
 
 @Module({
@@ -91,7 +93,13 @@ import { PermissionModule } from './permission/permission.module';
     PermissionModule
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    // {
+    //   provide: APP_GUARD,
+    //   useClass: PermissionGuard,
+    // },
+    AppService,
+  ],
 })
 export class AppModule {
    configure(consumer: MiddlewareConsumer) {

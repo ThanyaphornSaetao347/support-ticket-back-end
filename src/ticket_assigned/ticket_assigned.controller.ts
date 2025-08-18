@@ -6,6 +6,8 @@ import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import { RequireAction } from '../permission/permission.decorator';
+import { PermissionGuard } from '../permission/permission.guard';
 
 @Controller('api')
 export class TicketAssignedController {
@@ -17,7 +19,8 @@ export class TicketAssignedController {
   ) {}
 
   @Post('tickets/assign/:ticket_no')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAction('assign_ticket')
   async assignTicket(
     @Param('ticket_no') ticketNo: string,
     @Body('assignedTo') assignedTo: number,

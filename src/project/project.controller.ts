@@ -2,6 +2,8 @@ import { Controller, Post, Get, UseGuards, Request, Param, ParseIntPipe, Body } 
 import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 import { ProjectService } from './project.service';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { PermissionGuard } from '../permission/permission.guard';
+import { RequireAnyAction } from '../permission/permission.decorator';
 
 @Controller('api')
 export class ProjectController {
@@ -22,7 +24,8 @@ export class ProjectController {
     }
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('create_projcet')
   @Post('projects')
   async createProject(@Body() createProjectDto: CreateProjectDto, @Request() req) {
     console.log('User in request:', req.user);

@@ -140,15 +140,15 @@ export class PermissionService {
   }
 
   async canReadUser(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [13, 15]); // ADMIN = 13, USER_MANAGER = 15
+    return this.hasRole(userId, 15); // ADMIN = 13, USER_MANAGER = 15
   }
 
   async canUpdateUser(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [13, 15]); // ADMIN = 13, USER_MANAGER = 15
+    return this.hasRole(userId, 15); // ADMIN = 13, USER_MANAGER = 15
   }
 
   async canDeleteUser(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [13, 15]); // ADMIN = 13, USER_MANAGER = 15
+    return this.hasRole(userId, 16); // ADMIN = 13, USER_MANAGER = 15
   }
 
   // Ticket Management Permissions
@@ -156,16 +156,16 @@ export class PermissionService {
     return this.hasRole(userId, 1); // REPORTER = 1
   }
 
-  async canReadTicket(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [1, 2, 12, 13]); // REPORTER, TRACKER, TICKET_OWNER, ADMIN
+  async canReadTicketDetial(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 12); // REPORTER, TRACKER, TICKET_OWNER, ADMIN
   }
 
   async canReadAllTickets(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [2, 13]); // TRACKER = 2, ADMIN = 13
+    return this.hasRole(userId, 13); // TRACKER = 2, ADMIN = 13
   }
 
   async canUpdateTicket(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [3, 8, 13]); // EDITOR = 3, PROBLEM_SOLVER = 8, ADMIN = 13
+    return this.hasAnyRole(userId, [3,13]); // EDITOR = 3, PROBLEM_SOLVER = 8, ADMIN = 13
   }
 
   async canDeleteTicket(userId: number): Promise<boolean> {
@@ -182,7 +182,7 @@ export class PermissionService {
 
   // Ticket Operations
   async canAssignTicket(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [9, 13]); // ASSIGNOR = 9, ADMIN = 13
+    return this.hasAnyRole(userId, [13]); // ASSIGNOR = 9, ADMIN = 13
   }
 
   async canChangeStatus(userId: number): Promise<boolean> {
@@ -212,26 +212,17 @@ export class PermissionService {
 
   // Category Management
   async canManageCategory(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [6, 13]); // CATEGORY_MANAGER = 6, ADMIN = 13
+    return this.hasAnyRole(userId, [17, 13]); // CATEGORY_MANAGER = 17, ADMIN = 13
   }
 
   // Status Management
   async canManageStatus(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [7, 13]); // STATUS_MANAGER = 7, ADMIN = 13
+    return this.hasAnyRole(userId, [18, 13]); // STATUS_MANAGER = 18, ADMIN = 13
   }
 
   // Satisfaction
   async canRateSatisfaction(userId: number): Promise<boolean> {
     return this.hasRole(userId, 14); // RATER = 14
-  }
-
-  // Special Checks
-  async isAdmin(userId: number): Promise<boolean> {
-    return this.hasRole(userId, 13); // ADMIN = 13
-  }
-
-  async isSupporter(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [16, 13]); // SUPPORTER = 16, ADMIN = 13
   }
 
   /**
@@ -320,8 +311,6 @@ export class PermissionService {
         canDeleteTicket: await this.canDeleteTicket(userId),
         canAssignTicket: await this.canAssignTicket(userId),
         canChangeStatus: await this.canChangeStatus(userId),
-        isAdmin: await this.isAdmin(userId),
-        isSupporter: await this.isSupporter(userId),
       }
     };
   }

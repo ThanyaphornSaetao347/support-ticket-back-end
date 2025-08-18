@@ -6,6 +6,7 @@ import { Project } from './entities/project.entity';
 import { CustomerForProject } from '../customer_for_project/entities/customer-for-project.entity';
 import { Users } from '../users/entities/user.entity';
 import { Customer } from '../customer/entities/customer.entity';
+import { PermissionModule } from '../permission/permission.module';
 
 @Module({
   imports: [
@@ -14,7 +15,8 @@ import { Customer } from '../customer/entities/customer.entity';
       CustomerForProject,
       Users,
       Customer
-    ])
+    ]),
+    PermissionModule
   ],
   controllers: [ProjectController],
   providers: [ProjectService],

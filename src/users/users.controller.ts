@@ -4,8 +4,9 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Request } from 'express';
 import { AuthGuard } from '@nestjs/passport';
-import { permissionEnum } from '../permission';
-import { requirePermissions } from '../permission/permission.decorator';
+import { RequireRoles, RequireAction, RequireRolesOrOwner } from '../permission/permission.decorator';
+import { JwtAuthGuard } from '../auth/jwt_auth.guard';
+import { PermissionGuard } from '../permission/permission.guard';
 
 @Controller('users')
 export class UserController {
@@ -22,13 +23,10 @@ export class UserController {
   }
 
   @Post()
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAction('create_user')
   async create(@Body() createUserDto: CreateUserDto, @Req() req: Request) {
     const userId = req.user && req.user['id'] ? req.user['id'] : null;
-
-    if (!userId || !(await this.canAddUser(userId))) {
-      throw new ForbiddenException('คุณไม่มีสิทธิ์ในการเพิ่มผู้ใช้');
-    }
 
     // เพิ่ม create_by และ update_by จาก user_id ที่ login
     createUserDto.create_by = userId;

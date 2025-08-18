@@ -7,6 +7,7 @@ import { Ticket } from '../ticket/entities/ticket.entity';
 import { TicketAssigned } from './entities/ticket_assigned.entity';
 import { Users } from '../users/entities/user.entity';
 import { NotificationModule } from '../notification/notification.module';
+import { PermissionModule } from 'src/permission/permission.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { NotificationModule } from '../notification/notification.module';
       UserAllowRole
     ]),
     NotificationModule,
+    PermissionModule,
   ],
   controllers: [TicketAssignedController],
   providers: [TicketAssignedService],
