@@ -20,6 +20,9 @@ import { NotificationType } from '../notification/entities/notification.entity';
 import { Users } from '../users/entities/user.entity';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 import { Project } from 'src/project/entities/project.entity';
+import { data } from 'jquery';
+import { PermissionService } from '../permission/permission.service';
+import { log } from 'console';
 
 @Injectable()
 export class TicketService {
@@ -47,7 +50,8 @@ export class TicketService {
     private readonly assignRepo: Repository<TicketAssigned>,
 
     private readonly notiService: NotificationService,
-  ) {}
+    private readonly permissionService: PermissionService,
+  ) { }
 
   // ✅ แก้ไข checkTicketOwnership สำหรับ PostgreSQL
   async checkTicketOwnership(userId: number, ticketId: number, userPermissions: number[]): Promise<boolean> {
@@ -111,15 +115,15 @@ export class TicketService {
         throw new BadRequestException('Valid create_by value is required');
       }
       const userId = dto.userId;
-      
+
       // สร้าง ticket_no
       const ticketNo = await this.generateTicketNumber();
-      
+
       let ticket_id;
       let status = false;
 
       if (dto.id) {
-        const result = await this.ticketRepo.findOne({ where: { id: dto.id }});
+        const result = await this.ticketRepo.findOne({ where: { id: dto.id } });
         if (result) {
           ticket_id = result?.id;
           status = true;
@@ -136,7 +140,7 @@ export class TicketService {
           update_by: userId ?? '',
           isenabled: true,
         });
-        
+
         // ⚠️ ปัญหาหลัก: ต้อง await การ save
         const savedTicket = await this.ticketRepo.save(ticket);
         ticket_id = savedTicket.id;
@@ -145,7 +149,7 @@ export class TicketService {
         // sent noti to supporter
         await this.notifySupporters(savedTicket);
       }
-      
+
       return {
         status: status,
         ticket_id,
@@ -162,12 +166,12 @@ export class TicketService {
       const supporterRoleIds = [5, 6, 7, 8, 9, 10, 13]
 
       const supporterUserIds = await this.userRepo
-      .createQueryBuilder('u')
-      .select('DISTINCT u.id')
-      .innerJoin('user_allow_role', 'uar', 'uar.user_id = u.id')
-      .innerJoin('master_role', 'ms', 'ms.id = uar.role_id')
-      .where('ms.id IN (:...supporterRoleIds)', {supporterRoleIds})
-      .getRawMany();
+        .createQueryBuilder('u')
+        .select('DISTINCT u.id')
+        .innerJoin('user_allow_role', 'uar', 'uar.user_id = u.id')
+        .innerJoin('master_role', 'ms', 'ms.id = uar.role_id')
+        .where('ms.id IN (:...supporterRoleIds)', { supporterRoleIds })
+        .getRawMany();
 
       if (supporterRoleIds.length === 0) {
         console.warn('No Supporter found for notification')
@@ -185,7 +189,7 @@ export class TicketService {
           await this.notiService.createNewTicketNotification(ticket.ticket_no);
           console.log(`Notification sent to supporter: ${supporter.id} (${supporter.email})`);
         } catch (notifyError) {
-          console .error(`Failed to notify supporter ${supporter.id}:`, notifyError);
+          console.error(`Failed to notify supporter ${supporter.id}:`, notifyError);
         }
       }
     } catch (error) {
@@ -231,10 +235,10 @@ export class TicketService {
 
         console.warn(`Duplicate ticket number detected: ${ticketNo}, retrying...`);
         attempts++;
-        
+
         // รอสักครู่ก่อนลองใหม่
         await new Promise(resolve => setTimeout(resolve, 10 + Math.random() * 20));
-        
+
       } catch (error) {
         console.error('Error generating ticket number:', error);
         attempts++;
@@ -244,7 +248,7 @@ export class TicketService {
     // ถ้าลองหลายครั้งแล้วยังไม่ได้ ใช้ timestamp เป็น fallback
     const timestamp = Date.now().toString().slice(-5);
     const fallbackTicketNo = `${prefix}${timestamp}`;
-    
+
     console.warn(`Using fallback ticket number: ${fallbackTicketNo}`);
     return fallbackTicketNo;
   }
@@ -333,20 +337,20 @@ export class TicketService {
   // ✅ เพิ่ม helper method สำหรับ normalize ticket_no
   private normalizeTicketNo(ticketIdentifier: string | number): string {
     let ticketNo = ticketIdentifier.toString().trim().toUpperCase();
-    
+
     // ถ้าไม่มี T ให้เพิ่มให้
     if (!ticketNo.startsWith('T')) {
       ticketNo = 'T' + ticketNo;
     }
-    
+
     return ticketNo;
   }
 
-// ✅ เพิ่ม method ใหม่ที่ใช้ ticket_no
+  // ✅ เพิ่ม method ใหม่ที่ใช้ ticket_no
   async getTicketData(ticket_no: string, baseUrl: string) {
     try {
       const attachmentPath = '/images/issue_attachment/';
-      
+
       // ✅ Normalize ticket_no
       const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
 
@@ -471,15 +475,15 @@ export class TicketService {
   async softDeleteTicket(ticket_no: string, userId: number): Promise<void> {
     try {
       console.log(`🗑️ Soft deleting ticket: ${ticket_no} by user: ${userId}`);
-      
+
       const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
       console.log(`📝 Normalized ticket_no: ${normalizedTicketNo}`);
-      
-      const ticket = await this.ticketRepo.findOne({ 
-        where: { 
+
+      const ticket = await this.ticketRepo.findOne({
+        where: {
           ticket_no: normalizedTicketNo,
-          isenabled: true 
-        } 
+          isenabled: true
+        }
       });
 
       if (!ticket) {
@@ -528,14 +532,14 @@ export class TicketService {
   async restoreTicketByNo(ticket_no: string, userId: number): Promise<void> {
     try {
       console.log(`🔄 Restoring ticket: ${ticket_no} by user: ${userId}`);
-      
+
       const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
-      
-      const ticket = await this.ticketRepo.findOne({ 
-        where: { 
+
+      const ticket = await this.ticketRepo.findOne({
+        where: {
           ticket_no: normalizedTicketNo,
           isenabled: false // หาตั๋วที่ถูกลบ
-        } 
+        }
       });
 
       if (!ticket) {
@@ -554,7 +558,7 @@ export class TicketService {
       // ✅ ตรวจสอบระยะเวลา (ถ้าต้องการ - 7 วัน)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
+
       if (ticket.update_date && ticket.update_date < sevenDaysAgo) {
         console.log(`❌ Restore period expired`);
         throw new BadRequestException('ไม่สามารถกู้คืนได้ เนื่องจากเกินระยะเวลา 7 วัน');
@@ -592,7 +596,7 @@ export class TicketService {
   async getDeletedTickets(): Promise<any[]> {
     try {
       console.log('📋 Getting deleted tickets...');
-      
+
       const deletedTickets = await this.ticketRepo.find({
         where: { isenabled: false },
         order: { update_date: 'DESC' }, // ใช้ update_date แทน deleted_at
@@ -616,8 +620,8 @@ export class TicketService {
           deleted_at: ticket.update_date, // ใช้ update_date เป็น deleted_at
           update_by: ticket.update_by,
           can_restore: canRestore,
-          days_until_permanent_delete: canRestore ? 
-            Math.ceil((ticket.update_date.getTime() + 7*24*60*60*1000 - Date.now()) / (24*60*60*1000)) : 0
+          days_until_permanent_delete: canRestore ?
+            Math.ceil((ticket.update_date.getTime() + 7 * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000)) : 0
         };
       });
     } catch (error) {
@@ -630,12 +634,12 @@ export class TicketService {
   async findTicketByNo(ticket_no: string): Promise<Ticket | null> {
     try {
       const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
-      
-      return await this.ticketRepo.findOne({ 
-        where: { 
+
+      return await this.ticketRepo.findOne({
+        where: {
           ticket_no: normalizedTicketNo,
-          isenabled: true 
-        } 
+          isenabled: true
+        }
       });
     } catch (error) {
       console.error('Error in findTicketByNo:', error);
@@ -660,32 +664,48 @@ export class TicketService {
           't.issue_description',
           't.status_id',
           't.create_by',
-          't.create_date'
+          't.create_date',
+          'tcl.name AS categories_name',
+          'p.name AS project_name',
+          'tsl.name AS status_name'
         ])
-        .andWhere('t.isenabled = true')
+        .leftJoin('ticket_categories_language', 'tcl', 'tcl.category_id = t.categories_id AND tcl.language_id = :lang', { lang: 'th' })
+        .leftJoin('project', 'p', 'p.id = t.project_id')
+        .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = t.status_id AND tsl.language_id = :lang', { lang: 'th' })
+        .where('t.isenabled = true')
         .orderBy('t.create_date', 'DESC');
 
-      // ถ้าไม่ได้เป็น role_id = 13 ให้ดูเฉพาะของตัวเอง
       if (!isViewAll) {
         query.andWhere('t.create_by = :userId', { userId });
       }
 
-      const tickets = await query.getMany();
+      const rawTickets = await query.getRawMany();
 
-      console.log('Raw SQL result count:', tickets.length);
-      console.log('Sample ticket:', tickets[0]);
+      const tickets = rawTickets.map(t => ({
+        ticket_no: t.t_ticket_no,
+        categories_id: t.t_categories_id,
+        project_id: t.t_project_id,
+        issue_description: t.t_issue_description,
+        status_id: t.t_status_id,
+        create_by: t.t_create_by,
+        create_date: t.t_create_date,
+        categories_name: t.categories_name,
+        project_name: t.project_name,
+        status_name: t.status_name,
+      }));
 
       return tickets;
+
     } catch (error) {
       console.log('Error in getAllTicket:', error.message);
       throw new Error(`Failed to get tickets: ${error.message}`);
     }
   }
 
-  async getAllMAsterFilter(userId: number): Promise<any> {
+  async getAllMasterFilter(userId: number): Promise<any> {
     try {
       console.log('🔍 Starting getAllMAsterFilter for userId:', userId);
-      
+
       // Categories
       const categories = await this.categoryRepo
         .createQueryBuilder('tc')
@@ -697,16 +717,24 @@ export class TicketService {
 
       console.log('✅ Categories found:', categories.length);
 
+      const canViewAllMaster = await this.permissionService.canReadAllProject(userId);
       // ✅ Fixed Projects Query - ใช้ $1 แทน :userId
-      const projects = await this.projectRepo.query(`
-        SELECT 
-            p.id,
-            p.name
-        FROM project p
-        INNER JOIN customer_for_project cp ON cp.project_id = p.id
-        WHERE cp.user_id = $1 AND cp.isenabled = true
-      `, [userId]);
-      
+      // สร้าง query builder
+      let projectsQuery = this.projectRepo
+        .createQueryBuilder("p")
+        .innerJoin("customer_for_project", "cp", "cp.project_id = p.id")
+        .where("p.isenabled = true")
+        .andWhere("cp.isenabled = true")
+        .select(["DISTINCT p.id AS id", "p.name AS name"]);
+
+      // เพิ่มเงื่อนไข filter ตาม user_id ถ้า user มีสิทธิ์จำกัด
+      if (!canViewAllMaster) {
+        projectsQuery = projectsQuery.andWhere("cp.user_id = :userId", { userId });
+      }
+
+      // สุดท้าย execute query
+      const projects = await projectsQuery.getRawMany();
+
       console.log('✅ Projects found:', projects.length);
 
       // Status
@@ -717,7 +745,7 @@ export class TicketService {
         .andWhere('tsl.language_id = :lang', { lang: 'th' })
         .select(['ts.id AS id', 'tsl.name AS name'])
         .getRawMany();
-        
+
       console.log('✅ Status found:', status.length);
 
       return {
@@ -725,14 +753,14 @@ export class TicketService {
         message: 'Success',
         data: { categories, projects, status },
       };
-      
+
     } catch (error) {
       console.error('❌ Error in getAllMAsterFilter:', {
         message: error.message,
         stack: error.stack,
         userId
       });
-      
+
       return {
         code: 2,
         message: `เกิดข้อผิดพลาด: ${error.message}`,
@@ -778,332 +806,134 @@ export class TicketService {
 
   async saveSupporter(
     ticketNo: string,
-    formData: any,
+    body: any,
     files: Express.Multer.File[],
-    currentUserId: number
+    currentUserId: number,
+    status_id: number
   ) {
-    const results = {};
+    const results: any = {};
 
-    if (!ticketNo) {
-      throw new Error('ticket_no is required');
-    }
+    if (!ticketNo) throw new Error('ticket_no is required');
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
     try {
-      // 🔹 0. ดึงสิทธิ์ของ user
-      const userPermissions: number[] = await this.checkUserPermissions(currentUserId);
+      // 0. ตรวจสอบสิทธิ์
+      const userPermissions = await this.checkUserPermissions(currentUserId);
+      if (!userPermissions.includes(8)) throw new Error('Permission denied');
 
-      // 🔹 1. ตรวจสอบว่า role_id = 8 (SUPPORTER) หรือไม่
-      if (!userPermissions.includes(8)) {
-        throw new Error('Permission denied: You are not allowed to edit this ticket');
+      // 1. Update ticket fields + คำนวณเวลา
+      const chk = await this.updateTicketFieldsWithTimeCalculation(ticketNo, body, currentUserId, results);
+
+      // 2. Handle attachments
+      if (files?.length) {
+        const ticketForFiles = await queryRunner.manager.findOne(this.ticketRepo.target, { where: { ticket_no: ticketNo } });
+        if (!ticketForFiles) throw new Error(`Ticket ${ticketNo} not found`);
+        await this.createAttachments(files, ticketForFiles.id, currentUserId, results);
       }
 
-      // 2. Update Ticket fields พร้อมคำนวณเวลา
-      await this.updateTicketFieldsWithTimeCalculation(ticketNo, formData, currentUserId, results);
+      // 3. Update status + insert history
+      if (chk) {
+        // Update ticket status
+        await queryRunner.manager.update(this.ticketRepo.target, { ticket_no: ticketNo }, { status_id });
 
-      // 3. Handle Attachments
-      if (files && files.length > 0) {
-        const ticket = await this.ticketRepo.findOne({
-          where: { ticket_no: ticketNo }
+        // ดึง ticket_id
+        const ticket = await queryRunner.manager.findOne(this.ticketRepo.target, { where: { ticket_no: ticketNo }, select: ['id'] });
+        if (!ticket) throw new Error(`Ticket ${ticketNo} not found after update`);
+
+        // Insert status_history
+        await queryRunner.manager.insert(this.historyRepo.target, {
+          ticket_id: ticket.id,
+          status_id,
+          create_by: currentUserId,
+          create_date: new Date()
         });
-
-        if (!ticket) {
-          throw new Error(`Ticket with ticket_no ${ticketNo} not found`);
-        }
-
-        await this.createAttachments(files, ticket.id, currentUserId, results);
       }
 
-      return results;
+      await queryRunner.commitTransaction();
+
+      // ✅ Return JSON-safe
+      return {
+        ticket_no: ticketNo,
+        updated_status_id: status_id,
+        results
+      };
     } catch (error) {
+      await queryRunner.rollbackTransaction();
       throw new Error(`Failed to save supporter data: ${error.message}`);
+    } finally {
+      await queryRunner.release();
     }
   }
 
-  private async updateTicketFieldsWithTimeCalculation(ticketNo: string, formData: any, currentUserId: number, results: any) {
+  private async updateTicketFieldsWithTimeCalculation(
+    ticketNo: string,
+    formData: any,
+    currentUserId: number,
+    results: any
+  ) {
     // ดึงข้อมูล ticket ปัจจุบัน
     const currentTicket = await this.ticketRepo.findOne({
       where: { ticket_no: ticketNo },
-      relations: ['history'] // เปลี่ยนจาก 'statusHistory' เป็น 'history'
+      relations: ['history']
     });
 
     if (!currentTicket) {
       throw new Error(`Ticket with ticket_no ${ticketNo} not found`);
     }
 
+    // เตรียมข้อมูล update
     const updateData: Partial<Ticket> = {
       update_by: currentUserId,
       update_date: new Date()
     };
 
-    // 1. คำนวณ estimate_time (เวลาประมาณการทำงาน)
+    // 1. ใช้ค่าจาก Frontend ถ้ามี, else ไม่เปลี่ยน
     if (formData.estimate_time !== undefined) {
-      updateData.estimate_time = parseInt(formData.estimate_time);
-    } else if (!currentTicket.estimate_time) {
-      // คำนวณอัตโนมัติจากประเภทงานหรือความซับซ้อน
-      updateData.estimate_time = await this.calculateEstimateTime(currentTicket);
+      const estimate = parseInt(formData.estimate_time);
+      if (isNaN(estimate) || estimate < 0) throw new BadRequestException('estimate_time ไม่ถูกต้อง');
+      updateData.estimate_time = estimate;
     }
 
-    // 2. คำนวณ due_date (วันครบกำหนด)
     if (formData.due_date) {
-      updateData.due_date = new Date(formData.due_date);
-    } else if (!currentTicket.due_date) {
-      // คำนวณจากวันที่สร้าง + estimate_time
-      const estimateTime = updateData.estimate_time || currentTicket.estimate_time || 24;
-      updateData.due_date = this.calculateDueDate(currentTicket.create_date, estimateTime);
+      const due = new Date(formData.due_date);
+      if (isNaN(due.getTime())) throw new BadRequestException('due_date ไม่ถูกต้อง');
+      updateData.due_date = due;
     }
 
-    // 3. คำนวณ close_estimate (เวลาประมาณการปิด)
     if (formData.close_estimate) {
-      updateData.close_estimate = new Date(formData.close_estimate);
-    } else {
-      // คำนวณจากความคืบหน้าปัจจุบัน
-      const estimateTime = updateData.estimate_time || currentTicket.estimate_time || 24;
-      updateData.close_estimate = await this.calculateCloseEstimate(currentTicket, estimateTime);
+      const close = new Date(formData.close_estimate);
+      if (isNaN(close.getTime())) throw new BadRequestException('close_estimate ไม่ถูกต้อง');
+      updateData.close_estimate = close;
     }
 
-    // 4. คำนวณ lead_time (เวลานำ - เวลาที่ใช้จริง)
     if (formData.lead_time !== undefined) {
-      updateData.lead_time = parseInt(formData.lead_time);
-    } else {
-      // คำนวณจากเวลาที่ผ่านมาตั้งแต่เริ่มงาน
-      updateData.lead_time = await this.calculateLeadTime(currentTicket);
+      const lead = parseInt(formData.lead_time);
+      if (isNaN(lead) || lead < 0) throw new BadRequestException('lead_time ไม่ถูกต้อง');
+      updateData.lead_time = lead;
     }
 
-    // 5. อัพเดทข้อมูลอื่นๆ
-    if (formData.fix_issue_description) {
-      updateData.fix_issue_description = formData.fix_issue_description;
-    }
-    if (formData.related_ticket_id) {
-      updateData.related_ticket_id = formData.related_ticket_id;
-    }
-
-    // คำนวณเวลาเพิ่มเติม
-    const timeMetrics = this.calculateTimeMetrics(currentTicket, updateData);
-    
-    // ไม่เพิ่ม timeMetrics ลงใน updateData เพราะไม่มี fields เหล่านี้ใน entity
-    // Object.assign(updateData, timeMetrics); // ลบบรรทัดนี้
+    // 2. อัพเดทข้อมูลอื่น ๆ
+    if (formData.fix_issue_description) updateData.fix_issue_description = formData.fix_issue_description;
+    if (formData.related_ticket_id) updateData.related_ticket_id = formData.related_ticket_id;
 
     // Update ticket
     await this.ticketRepo.update({ ticket_no: ticketNo }, updateData);
-    
+
     // Get updated ticket
-    const updatedTicket = await this.ticketRepo.findOne({
-      where: { ticket_no: ticketNo }
-    });
-    
+    const updatedTicket = await this.ticketRepo.findOne({ where: { ticket_no: ticketNo } });
+
     if (updatedTicket) {
       results['ticket'] = updatedTicket;
-      results['timeCalculations'] = this.getTimeCalculationSummary(currentTicket, updatedTicket, timeMetrics);
+      results['status'] = true;
     } else {
       results['ticket'] = null;
-      results['timeCalculations'] = null;
-    }
-  }
-
-  // คำนวณเวลาประมาณการทำงาน
-  private async calculateEstimateTime(ticket: Ticket): Promise<number> {
-    // ดึงข้อมูลสถิติจาก tickets ที่คล้ายกัน
-    const similarTickets = await this.ticketRepo.find({
-      where: { 
-        categories_id: ticket.categories_id,
-        status_id: 5 // สมมติว่า 5 = completed
-      },
-      take: 10
-    });
-
-    if (similarTickets.length > 0) {
-      const avgTime = similarTickets.reduce((sum, t) => sum + (t.lead_time || 24), 0) / similarTickets.length;
-      return Math.round(avgTime);
+      results['status'] = false;
     }
 
-    // Default estimate ตามประเภท
-    const categoryEstimates = {
-      1: 8,   // Bug fix
-      2: 16,  // Feature request  
-      3: 4,   // Question/Support
-      4: 24,  // Complex issue
-    };
-
-    return categoryEstimates[ticket.categories_id] || 24;
-  }
-
-  // คำนวณวันครบกำหนด
-  private calculateDueDate(createDate: Date, estimateHours: number): Date {
-    const dueDate = new Date(createDate);
-    
-    // แปลงชั่วโมงเป็นวัน (8 ชั่วโมงทำงาน/วัน)
-    const workingDays = Math.ceil(estimateHours / 8);
-    
-    // เพิ่มวันทำการ (ข้ามวันหยุดสุดสัปดาห์)
-    let addedDays = 0;
-    while (addedDays < workingDays) {
-      dueDate.setDate(dueDate.getDate() + 1);
-      
-      // ข้ามวันเสาร์ (6) และวันอาทิตย์ (0)
-      if (dueDate.getDay() !== 0 && dueDate.getDay() !== 6) {
-        addedDays++;
-      }
-    }
-    
-    return dueDate;
-  }
-
-  // คำนวณเวลาประมาณการปิด
-  private async calculateCloseEstimate(ticket: Ticket, estimateTime: number): Promise<Date> {
-    // ดึง status history เพื่อดูความคืบหน้า
-    const statusHistory = await this.historyRepo.find({
-      where: { ticket_id: ticket.id },
-      order: { create_date: 'ASC' }
-    });
-
-    if (statusHistory.length === 0) {
-      return this.calculateDueDate(new Date(), estimateTime || 24);
-    }
-
-    // คำนวณจากเปอร์เซ็นต์ความคืบหน้า
-    const currentStatus = statusHistory[statusHistory.length - 1];
-    const progressPercentage = this.getStatusProgress(currentStatus.status_id);
-    
-    if (progressPercentage >= 90) {
-      // ใกล้เสร็จแล้ว - ประมาณ 1-2 ชั่วโมง
-      const closeEstimate = new Date();
-      closeEstimate.setHours(closeEstimate.getHours() + 2);
-      return closeEstimate;
-    }
-
-    // คำนวณจากเวลาที่เหลือ
-    const timeSpent = this.calculateTimeSpent(statusHistory);
-    const remainingTime = (estimateTime || 24) - timeSpent;
-    const closeEstimate = new Date();
-    closeEstimate.setHours(closeEstimate.getHours() + Math.max(remainingTime, 1));
-    
-    return closeEstimate;
-  }
-
-  // คำนวณเวลานำ (Lead Time)
-  private async calculateLeadTime(ticket: Ticket): Promise<number> {
-    const now = new Date();
-    const created = new Date(ticket.create_date);
-    
-    // คำนวณเวลาที่ผ่านไปเป็นชั่วโมง
-    const diffInMs = now.getTime() - created.getTime();
-    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-    
-    // หักเวลาที่ไม่ใช่เวลาทำงาน (นอกเวลา 8:00-17:00, วันหยุดสุดสัปดาห์)
-    const workingHours = this.calculateWorkingHours(created, now);
-    
-    return Math.max(workingHours, 0);
-  }
-
-  // คำนวณชั่วโมงทำงาน (8:00-17:00, จันทร์-ศุกร์)
-  private calculateWorkingHours(startDate: Date, endDate: Date): number {
-    let workingHours = 0;
-    const current = new Date(startDate);
-    
-    while (current < endDate) {
-      const dayOfWeek = current.getDay();
-      const hour = current.getHours();
-      
-      // วันจันทร์-ศุกร์ (1-5) และเวลา 8:00-17:00
-      if (dayOfWeek >= 1 && dayOfWeek <= 5 && hour >= 8 && hour < 17) {
-        workingHours++;
-      }
-      
-      current.setHours(current.getHours() + 1);
-    }
-    
-    return workingHours;
-  }
-
-  // คำนวณเปอร์เซ็นต์ความคืบหน้าตาม status
-  private getStatusProgress(statusId: number): number {
-    const statusProgress = {
-      1: 0,   // Open
-      2: 25,  // In Progress
-      3: 50,  // Investigation
-      4: 75,  // Testing
-      5: 90,  // Ready to Close
-      6: 100, // Closed
-    };
-    
-    return statusProgress[statusId] || 0;
-  }
-
-  // คำนวณเวลาที่ใช้ไปแล้ว
-  private calculateTimeSpent(statusHistory: any[]): number {
-    if (statusHistory.length < 2) return 0;
-    
-    let timeSpent = 0;
-    
-    for (let i = 1; i < statusHistory.length; i++) {
-      const current = new Date(statusHistory[i].create_date);
-      const previous = new Date(statusHistory[i - 1].create_date);
-      
-      const diffInMs = current.getTime() - previous.getTime();
-      const diffInHours = diffInMs / (1000 * 60 * 60);
-      
-      // เฉพาะช่วงที่ทำงาน
-      const workingHours = this.calculateWorkingHours(previous, current);
-      timeSpent += workingHours;
-    }
-    
-    return timeSpent;
-  }
-
-  // คำนวณเมตริกต์เวลาเพิ่มเติม (ไม่บันทึกลง database)
-  private calculateTimeMetrics(currentTicket: Ticket, updateData: any) {
-    const metrics: any = {};
-    
-    // SLA compliance
-    if (updateData.due_date && updateData.close_estimate) {
-      const dueDate = new Date(updateData.due_date);
-      const closeEstimate = new Date(updateData.close_estimate);
-      metrics.sla_status = closeEstimate <= dueDate ? 'On Track' : 'At Risk';
-    }
-    
-    // Utilization rate
-    if (updateData.estimate_time && updateData.lead_time) {
-      const utilization = (updateData.estimate_time / updateData.lead_time) * 100;
-      metrics.utilization_rate = Math.round(utilization);
-    }
-    
-    // Priority adjustment based on time
-    if (updateData.lead_time && updateData.estimate_time) {
-      const timeRatio = updateData.lead_time / updateData.estimate_time;
-      if (timeRatio > 1.5) {
-        metrics.priority_adjustment = 'High';
-      } else if (timeRatio > 1.2) {
-        metrics.priority_adjustment = 'Medium';
-      } else {
-        metrics.priority_adjustment = 'Normal';
-      }
-    }
-    
-    return metrics;
-  }
-
-  // สรุปการคำนวณเวลา
-  private getTimeCalculationSummary(originalTicket: Ticket, updatedTicket: Ticket, timeMetrics: any) {
-    return {
-      original: {
-        estimate_time: originalTicket.estimate_time,
-        lead_time: originalTicket.lead_time,
-        due_date: originalTicket.due_date,
-        close_estimate: originalTicket.close_estimate,
-      },
-      updated: {
-        estimate_time: updatedTicket.estimate_time,
-        lead_time: updatedTicket.lead_time,
-        due_date: updatedTicket.due_date,
-        close_estimate: updatedTicket.close_estimate,
-      },
-      calculations: {
-        time_variance: (updatedTicket.lead_time || 0) - (updatedTicket.estimate_time || 0),
-        sla_status: timeMetrics.sla_status || null,
-        utilization_rate: timeMetrics.utilization_rate || null,
-        priority_adjustment: timeMetrics.priority_adjustment || null,
-      }
-    };
+    return results;
   }
 
   private async createAttachments(
@@ -1148,12 +978,12 @@ export class TicketService {
     userId: number
   ): Promise<Ticket> {
     const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
-    
-    const ticket = await this.ticketRepo.findOne({ 
-      where: { 
+
+    const ticket = await this.ticketRepo.findOne({
+      where: {
         ticket_no: normalizedTicketNo,
-        isenabled: true 
-      } 
+        isenabled: true
+      }
     });
 
     if (!ticket) {
@@ -1380,8 +1210,8 @@ export class TicketService {
         .from('ticket', 't')
         .leftJoin('ticket_status', 'ts', 'ts.id = t.status_id AND ts.isenabled = true')
         .leftJoin(
-          'ticket_status_language', 
-          'tsl', 
+          'ticket_status_language',
+          'tsl',
           'tsl.status_id = t.status_id AND tsl.language_id = :lang'
         )
         .where('t.id = :ticketId', { ticketId })
@@ -1397,7 +1227,7 @@ export class TicketService {
 
       console.log(`✅ Found ticket status:`, result);
       return result;
-      
+
     } catch (error) {
       console.error('💥 Error getting ticket status:', error);
       return null;

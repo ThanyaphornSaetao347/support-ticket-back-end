@@ -156,12 +156,16 @@ export class PermissionGuard implements CanActivate {
         'restore_ticket': () => this.permissionService.canRestoreTicket(userId),
         'viwe_ticket_delete': () => this.permissionService.canViewDeletedTickets(userId),
         'assign_ticket': () => this.permissionService.canAssignTicket(userId),
+        'get_assign': () => this.permissionService.canGetAssign(userId),
         'change_status': () => this.permissionService.canChangeStatus(userId),
         'solve_problem': () => this.permissionService.canSolveProblem(userId),
         'create_project': () => this.permissionService.canCreateProject(userId),
+        'read_project': () => this.permissionService.canReadProject(userId),
+        'read_all_project': () => this.permissionService.canReadAllProject(userId),
         'manage_category': () => this.permissionService.canManageCategory(userId),
         'manage_status': () => this.permissionService.canManageStatus(userId),
         'rate_satisfaction': () => this.permissionService.canRateSatisfaction(userId),
+        'get_all_master_fillter': () => this.permissionService.canGetAllMasterFillter(userId),
       };
 
       const permissionCheck = actionMap[action];

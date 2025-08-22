@@ -23,5 +23,5 @@ export class Project {
     customerProjects: CustomerForProject[];
 
     @OneToMany(() => Ticket, ticket => ticket.project)
-    ticket: Ticket;
+    ticket: Ticket[];
 }

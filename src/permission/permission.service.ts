@@ -165,24 +165,32 @@ export class PermissionService {
   }
 
   async canUpdateTicket(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [3,13]); // EDITOR = 3, PROBLEM_SOLVER = 8, ADMIN = 13
+    return this.hasAnyRole(userId, [3,19]); // EDITOR = 3, PROBLEM_SOLVER = 8, ADMIN = 13
   }
 
   async canDeleteTicket(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [4, 13]); // DELETER = 4, ADMIN = 13
+    return this.hasAnyRole(userId, [4, 19]); // DELETER = 4, ADMIN = 13
   }
 
   async canRestoreTicket(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [11, 13]); // RESTORER = 11, ADMIN = 13
+    return this.hasAnyRole(userId, [11, 19]); // RESTORER = 11, ADMIN = 13
   }
 
   async canViewDeletedTickets(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [11, 13]); // RESTORER = 11, ADMIN = 13
+    return this.hasAnyRole(userId, [11, 19]); // RESTORER = 11, ADMIN = 13
+  }
+
+  async canGetAllMasterFillter(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [1, 13])
   }
 
   // Ticket Operations
   async canAssignTicket(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [13]); // ASSIGNOR = 9, ADMIN = 13
+    return this.hasAnyRole(userId, [19]); // ASSIGNOR = 19
+  }
+
+  async canGetAssign(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 9)
   }
 
   async canChangeStatus(userId: number): Promise<boolean> {
@@ -199,7 +207,11 @@ export class PermissionService {
   }
 
   async canReadProject(userId: number): Promise<boolean> {
-    return this.hasAnyRole(userId, [10, 13]); // PROJECT_MANAGER = 10, ADMIN = 13
+    return this.hasAnyRole(userId, [1]); // 1
+  }
+
+  async canReadAllProject(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [13])
   }
 
   async canUpdateProject(userId: number): Promise<boolean> {
@@ -310,6 +322,7 @@ export class PermissionService {
         canUpdateTicket: await this.canUpdateTicket(userId),
         canDeleteTicket: await this.canDeleteTicket(userId),
         canAssignTicket: await this.canAssignTicket(userId),
+        canGetAssign: await this.canGetAssign(userId),
         canChangeStatus: await this.canChangeStatus(userId),
       }
     };

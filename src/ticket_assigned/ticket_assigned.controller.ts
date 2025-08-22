@@ -26,17 +26,17 @@ export class TicketAssignedController {
     @Body('assignedTo') assignedTo: number,
     @Request() req: any
   ) {
-    const userId = req.user.id;
+    return this.ticketAssignedService.assignTicketByTicketNo(
+      ticketNo,
+      assignedTo,
+      req.user.id
+    );
+  }
 
-    const roles = await this.userAllowRoleRepo.find({ where: { user_id: userId } });
-    const userRoleIds = roles.map(r => r.role_id);
-    const allowedRoles = [5, 6, 7, 8, 9, 10, 11];
-
-    const hasPermission = userRoleIds.some(role => allowedRoles.includes(role));
-    if (!hasPermission) {
-      throw new ForbiddenException('ไม่มีสิทธิ์มอบหมายงาน');
-    }
-
-    return this.ticketAssignedService.assignTicketByTicketNo(ticketNo, assignedTo, userId);
+  @Get('tickets/assign/users')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAction('assign_ticket')
+  async getAssignableUsers() {
+    return this.ticketAssignedService.getUserAssignTo();
   }
 }
