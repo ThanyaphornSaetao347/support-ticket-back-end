@@ -8,7 +8,7 @@ import { RequireRoles, RequireAction, RequireRolesOrOwner } from '../permission/
 import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
 
-@Controller('users')
+@Controller('api/users')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
@@ -34,6 +34,13 @@ export class UserController {
 
     console.log('Received DTO:', createUserDto);
     return await this.userService.create(createUserDto);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAction('create_user')
+  @Get('account')
+  async getUserAccount() {
+    return this.userService.userAccount();
   }
 
   @Get()

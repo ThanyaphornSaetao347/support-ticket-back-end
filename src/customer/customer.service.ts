@@ -19,7 +19,7 @@ export class CustomerService {
     customer.address = createCustomerDto.address;
     customer.telephone = createCustomerDto.telephone;
     customer.email = createCustomerDto.email;
-    customer.craete_by = createCustomerDto.create_by;
+    customer.create_by = createCustomerDto.create_by;
     customer.update_by = createCustomerDto.update_by;
     customer.isenabled = true;
 

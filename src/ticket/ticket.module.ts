@@ -19,6 +19,9 @@ import { NotificationModule } from '../notification/notification.module';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 import { PermissionModule } from '../permission/permission.module';
 import { UserModule } from '../users/users.module';
+import { UserAllowRoleModule } from 'src/user_allow_role/user_allow_role.module';
+import { UserAllowRole } from 'src/user_allow_role/entities/user_allow_role.entity';
+import { TicketCategoriesModule } from 'src/ticket_categories/ticket_categories.module';
 
 @Module({
   imports: [
@@ -32,12 +35,15 @@ import { UserModule } from '../users/users.module';
       Project,
       TicketStatus,
       TicketAssigned,
+      UserAllowRole,
     ]),
     TicketStatusHistoryModule,
     TicketStatusModule,
     NotificationModule,
     PermissionModule,
-    UserModule
+    UserModule,
+    UserAllowRoleModule,
+    TicketCategoriesModule,
   ],
   controllers: [TicketController, TicketAttachmentController],
   providers: [

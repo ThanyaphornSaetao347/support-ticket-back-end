@@ -29,19 +29,19 @@ export class AuthService {
     private userRepo: Repository<Users>,
     private jwtService: JwtService,
     private configService: ConfigService,
-  ) {}
+  ) { }
 
   async register(dto: { username: string; password: string }) {
     const existingUser = await this.userRepo.findOne({ where: { username: dto.username } });
     if (existingUser) {
       throw new UnauthorizedException('Username already exists');
     }
-      // เข้ารหัสรหัสผ่าน
+    // เข้ารหัสรหัสผ่าน
     const hashed = await bcrypt.hash(dto.password, 10);
-      // สร้างผู้ใช้ใหม่
-    const newuser = this.userRepo.create({ 
-      username: dto.username, 
-      password: hashed 
+    // สร้างผู้ใช้ใหม่
+    const newuser = this.userRepo.create({
+      username: dto.username,
+      password: hashed
     });
 
     await this.userRepo.save(newuser);
@@ -56,7 +56,7 @@ export class AuthService {
   async validateUser(username: string, password: string): Promise<any> {
     console.log('Attempting to validate user:', username);
 
-    const user = await this.userRepo.findOne({ 
+    const user = await this.userRepo.findOne({
       where: { username: username },
       select: ['id', 'username', 'password']
     });
@@ -82,59 +82,72 @@ export class AuthService {
     return result;
   }
 
-  async login(user: any): Promise<AuthResponse> {
-    console.log('Login processing for user:', user.username, 'ID:', user.id);
-    
-    if (!user || !user.id || !user.username) {
-      console.error('Invalid user object in login:', user);
-      return {
-        code: 0,
-        status: false,
-        message: 'Invalid user data',
-        user: null,
-        access_token: null
-      };
-    }
-    
-    // สร้าง JWT payload
-    const payload = { 
-      username: user.username, 
-      sub: user.id,
-    };
-
-    console.log('JWT payload:', payload);
-    
-    const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '3h';
-    console.log('Token will expire in:', expiresIn);
-    
-    // สร้าง access token
-    const accessToken = this.jwtService.sign(payload);
-    
-    console.log('Generated token for user:', user.username);
-    
-    // คำนวณ expires_at สำหรับ frontend
-    const expiresInSeconds = this.parseExpiresIn(expiresIn);
-    const now = Math.floor(Date.now() / 1000);
-    const expiresTimestamp = now + expiresInSeconds;
-    
-    // ดึง permissions ของ user
-    const permissions = await this.getUserPermissions(user.id);
-    
+// ใน auth.service.ts - แก้ไข login method (บรรทัดที่ 85-86)
+async login(user: any): Promise<AuthResponse> {
+  // เช็ค null ก่อน access properties
+  if (!user) {
+    console.log('Login failed: user is null or undefined');
     return {
-      code: 1,
-      status: true,
-      message: 'Login successful',
-      user: {
-        id: user.id,
-        username: user.username,
-      },
-      access_token: accessToken,
-      expires_in: expiresIn,
-      expires_at: new Date(expiresTimestamp * 1000).toISOString(),
-      token_expires_timestamp: expiresTimestamp,
-      permission: permissions,
+      code: 0,
+      status: false,
+      message: 'Invalid user data',
+      user: null,
+      access_token: null
     };
   }
+
+  console.log('Login processing for user:', user.username, 'ID:', user.id);
+  
+  if (!user.id || !user.username) {
+    console.error('Invalid user object in login:', user);
+    return {
+      code: 0,
+      status: false,
+      message: 'Invalid user data',
+      user: null,
+      access_token: null
+    };
+  }
+  
+  // สร้าง JWT payload
+  const payload = { 
+    username: user.username, 
+    sub: user.id,
+  };
+
+  console.log('JWT payload:', payload);
+  
+  const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '3h';
+  console.log('Token will expire in:', expiresIn);
+  
+  // สร้าง access token
+  const accessToken = this.jwtService.sign(payload);
+  
+  console.log('Generated token for user:', user.username);
+  
+  // คำนวณ expires_at สำหรับ frontend
+  const expiresInSeconds = this.parseExpiresIn(expiresIn);
+  const now = Math.floor(Date.now() / 1000);
+  const expiresTimestamp = now + expiresInSeconds;
+  
+  // ดึง permissions ของ user
+  const permissions = await this.getUserPermissions(user.id);
+  
+  return {
+    code: 1,
+    status: true,
+    message: 'Login successful',
+    user: {
+      id: user.id,
+      username: user.username,
+    },
+    access_token: accessToken,
+    expires_in: expiresIn,
+    expires_at: new Date(expiresTimestamp * 1000).toISOString(),
+    token_expires_timestamp: expiresTimestamp,
+    permission: permissions,
+  };
+}
 
   // เพิ่ม method สำหรับดึง permissions ของ user จาก database
   async getUserPermissions(userId: number): Promise<number[]> {
@@ -145,19 +158,19 @@ export class AuthService {
         FROM users_allow_role 
         WHERE user_id = $1
       `, [userId]);
-      
+
       if (!userRoles || userRoles.length === 0) {
         console.log(`No roles found for user ${userId}`);
         return [];
       }
-      
+
       // ดึง role_id ออกมา
       const roleIds = userRoles.map(r => r.role_id);
       console.log(`User ${userId} has roles:`, roleIds);
-      
+
       // return role_ids ที่เป็น permissions
       return roleIds;
-      
+
     } catch (error) {
       console.error('Error getting user permissions:', error);
       return [];
@@ -168,7 +181,7 @@ export class AuthService {
   private parseExpiresIn(expiresIn: string): number {
     const unit = expiresIn.slice(-1);
     const value = parseInt(expiresIn.slice(0, -1));
-    
+
     switch (unit) {
       case 'h':
         return value * 60 * 60; // hours to seconds
@@ -187,11 +200,11 @@ export class AuthService {
   async validateToken(token: string) {
     try {
       const decoded = this.jwtService.verify(token);
-      const user = await this.userRepo.findOne({ 
+      const user = await this.userRepo.findOne({
         where: { id: decoded.sub },
         select: ['id', 'username']
       });
-      
+
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
@@ -210,11 +223,11 @@ export class AuthService {
   }
 
   // เพิ่ม method สำหรับตรวจสอบว่า token ใกล้หมดอายุหรือไม่
-  async checkTokenExpiration(token: string): Promise<{ 
-    isExpiring: boolean; 
-    expiresAt: Date; 
+  async checkTokenExpiration(token: string): Promise<{
+    isExpiring: boolean;
+    expiresAt: Date;
     minutesLeft: number;
-    shouldRefresh: boolean; 
+    shouldRefresh: boolean;
   }> {
     try {
       const decoded = this.jwtService.decode(token) as any;
@@ -222,7 +235,7 @@ export class AuthService {
       const now = new Date();
       const timeDiff = expiresAt.getTime() - now.getTime();
       const minutesLeft = Math.floor(timeDiff / (1000 * 60));
-      
+
       return {
         isExpiring: minutesLeft <= 15, // เตือนเมื่อเหลือ 15 นาที
         expiresAt,

@@ -14,7 +14,7 @@ export class UserService {
     private userRepository: Repository<Users>,
     @InjectRepository(UserAllowRole)
     private readonly userAllowRoleRepo: Repository<UserAllowRole>,
-  ) {}
+  ) { }
 
   async findByEmail(email: string): Promise<Users> {
     const user = await this.userRepository.findOne({ where: { email } });
@@ -30,7 +30,7 @@ export class UserService {
         message: 'กรุณาระบุอีเมล'
       };
     }
-    
+
     // ตรวจสอบทั้ง username และ email ว่ามีในระบบแล้วหรือไม่
     const existingUsername = await this.userRepository.findOne({
       where: { username: createUserDto.username },
@@ -42,7 +42,7 @@ export class UserService {
         message: 'สร้างผู้ใช้ไม่สำเร็จ มีชื่อผู้ใช้นี้ในระบบแล้ว',
       };
     }
-    
+
     const existingEmail = await this.userRepository.findOne({
       where: { email: createUserDto.email },
     });
@@ -69,7 +69,7 @@ export class UserService {
       update_by: createUserDto.update_by,
     });
 
-    
+
     try {
       const result = await this.userRepository.save(user);
       if (!result) {
@@ -90,14 +90,14 @@ export class UserService {
     } catch (error: unknown) {
       // จัดการกับ error ซึ่งมีประเภทเป็น unknown
       let errorMessage = 'เกิดข้อผิดพลาดในการบันทึกข้อมูล';
-      
+
       // ตรวจสอบว่า error เป็น Error object หรือไม่
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === 'string') {
         errorMessage = error;
       }
-      
+
       return {
         code: '4',
         message: 'เกิดข้อผิดพลาดในการบันทึกข้อมูล',
@@ -107,22 +107,22 @@ export class UserService {
   }
 
   // ใน user.service.ts
-async getUserIdsByRole(
-  roleIds: number[],
-  filter?: { createBy?: number }
-): Promise<number[]> {
-  let query = this.userAllowRoleRepo
-    .createQueryBuilder('uar')
-    .select('uar.user_id', 'user_id')
-    .where('uar.role_id IN (:...roleIds)', { roleIds });
+  async getUserIdsByRole(
+    roleIds: number[],
+    filter?: { createBy?: number }
+  ): Promise<number[]> {
+    let query = this.userAllowRoleRepo
+      .createQueryBuilder('uar')
+      .select('uar.user_id', 'user_id')
+      .where('uar.role_id IN (:...roleIds)', { roleIds });
 
-  if (filter?.createBy) {
-    query = query.andWhere('uar.create_by = :createBy', { createBy: filter.createBy });
+    if (filter?.createBy) {
+      query = query.andWhere('uar.create_by = :createBy', { createBy: filter.createBy });
+    }
+
+    const result = await query.getRawMany();
+    return result.map(r => r.user_id);
   }
-
-  const result = await query.getRawMany();
-  return result.map(r => r.user_id);
-}
 
 
   // เช็คว่า user มี role_id หรือไม่
@@ -134,7 +134,7 @@ async getUserIdsByRole(
   }
   // ลบฟังก์ชัน createUser เนื่องจากซ้ำซ้อนกับ create และไม่มีการเข้ารหัสรหัสผ่าน
 
-  findAll(filter: {username?: string; email?: string}) {
+  findAll(filter: { username?: string; email?: string }) {
     const where: any = {};
 
     if (filter.username) {
@@ -144,17 +144,17 @@ async getUserIdsByRole(
     if (filter.email) {
       where.email = Like(`%${filter.email}%`);
     }
-    
-    return this.userRepository.find({ 
+
+    return this.userRepository.find({
       where,
       select: [
-        'id', 
-        'username', 
-        'password', 
-        'email', 
-        'firstname', 
-        'lastname', 
-        'phone', 
+        'id',
+        'username',
+        'password',
+        'email',
+        'firstname',
+        'lastname',
+        'phone',
         'isenabled',
         'start_date',
         'end_date',
@@ -167,15 +167,15 @@ async getUserIdsByRole(
   }
 
   async findOne(id: number) {
-  const user = await this.userRepository.findOneBy({ id });
-  if (!user) {
-    throw new NotFoundException('User not found');
+    const user = await this.userRepository.findOneBy({ id });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // เราแน่ใจแล้วว่า user ไม่เป็น null จึงสามารถทำ destructuring ได้อย่างปลอดภัย
+    const { password, ...result } = user;
+    return result;
   }
-  
-  // เราแน่ใจแล้วว่า user ไม่เป็น null จึงสามารถทำ destructuring ได้อย่างปลอดภัย
-  const { password, ...result } = user;
-  return result;
-}
 
   async findByUsername(username: string) {
     const user = await this.userRepository.findOne({ where: { username } });
@@ -195,46 +195,67 @@ async getUserIdsByRole(
 
 
   async update(user_id: number, updateUserDto: UpdateUserDto) {
-  const user = await this.findOne(user_id);
-  if (!user) {
-    throw new NotFoundException('User not found');
-  }
-  
-  // ถ้ามีการอัปเดตรหัสผ่าน ให้เข้ารหัสก่อน
-  if (updateUserDto.password) {
-    updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
-  }
+    const user = await this.findOne(user_id);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
 
-  updateUserDto.update_date = new Date();
-  
-  await this.userRepository.update(user_id, updateUserDto);
-  
-  const updatedUser = await this.userRepository.findOneBy({ id: user_id });
-  if (!updatedUser) {
-    throw new NotFoundException('User not found after update');
+    // ถ้ามีการอัปเดตรหัสผ่าน ให้เข้ารหัสก่อน
+    if (updateUserDto.password) {
+      updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
+    }
+
+    updateUserDto.update_date = new Date();
+
+    await this.userRepository.update(user_id, updateUserDto);
+
+    const updatedUser = await this.userRepository.findOneBy({ id: user_id });
+    if (!updatedUser) {
+      throw new NotFoundException('User not found after update');
+    }
+
+    // ใช้ spread operator แยกรหัสผ่านออกจากข้อมูลผู้ใช้
+    const { password, ...result } = updatedUser;
+
+    return {
+      code: '1',
+      message: 'อัปเดตสำเร็จ',
+      data: result
+    };
   }
-  
-  // ใช้ spread operator แยกรหัสผ่านออกจากข้อมูลผู้ใช้
-  const { password, ...result } = updatedUser;
-  
-  return {
-    code: '1',
-    message: 'อัปเดตสำเร็จ',
-    data: result
-  };
-}
 
   async remove(user_id: number) {
     const user = await this.findOne(user_id);
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    
+
     await this.userRepository.delete(user_id);
-    
+
     return {
       code: '1',
       message: 'ลบข้อมูลสำเร็จ'
     };
+  }
+
+  async userAccount() {
+    const account = await this.userRepository
+      .createQueryBuilder('u')
+      .leftJoin('customer_for_project', 'cfp', 'cfp.user_id = u.id')
+      .leftJoin('customer', 'c', 'c.id = cfp.customer_id')
+      .select([
+        `u.firstname || ' ' || u.lastname AS name`,
+        'u.email AS user_email',
+        'c.name AS company',
+        'c.address AS company_address',
+        'u.phone AS user_phone',
+        'c.telephone AS company_phone'
+      ])
+      .where('c.name IS NOT NULL')
+      .andWhere('c.address IS NOT NULL')
+      .andWhere('c.telephone IS NOT NULL')
+      .getRawMany();
+
+    return account;
   }
 }

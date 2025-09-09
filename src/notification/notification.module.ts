@@ -9,9 +9,13 @@ import { MailerModule } from '@nestjs-modules/mailer';
 import { TicketStatus } from '../ticket_status/entities/ticket_status.entity';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
     TypeOrmModule.forFeature([
       Notification,
       Users,

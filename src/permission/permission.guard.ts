@@ -69,10 +69,17 @@ export class PermissionGuard implements CanActivate {
         return false;
       }
 
+      // ดึง permissions/roles ของ user
+      const userPermissions: number[] = await this.permissionService.getUserRoleIds(numericUserId);
+
       // ตรวจสอบตาม action (single)
       if (permissionConfig.action) {
         this.logger.debug(`🎯 Checking single action: ${permissionConfig.action}`);
-        const result = await this.checkActionPermission(numericUserId, permissionConfig.action);
+        const result = await this.checkActionPermission(
+          numericUserId,
+          permissionConfig.action,
+          userPermissions
+        );
         this.logger.debug(`✨ Single action result: ${result}`);
         return result;
       }
@@ -81,7 +88,12 @@ export class PermissionGuard implements CanActivate {
       if (permissionConfig.actions && permissionConfig.actions.length > 0) {
         this.logger.debug(`🎯 Checking multiple actions: ${permissionConfig.actions}`);
         const logicType = permissionConfig.logicType || 'OR';
-        const result = await this.checkMultipleActions(numericUserId, permissionConfig.actions, logicType);
+        const result = await this.checkMultipleActions(
+          numericUserId,
+          permissionConfig.actions,
+          logicType,
+          userPermissions
+        );
         this.logger.debug(`✨ Multiple actions result: ${result}`);
         return result;
       }
@@ -89,9 +101,15 @@ export class PermissionGuard implements CanActivate {
       // ตรวจสอบตาม roles
       if (permissionConfig.roles) {
         this.logger.debug(`🎯 Checking roles: ${permissionConfig.roles}`);
-        const hasRole = await this.permissionService.hasAnyRole(numericUserId, permissionConfig.roles);
+
+        const hasRole = await this.permissionService.hasAnyRole(
+          numericUserId,
+          permissionConfig.roles,
+          userPermissions
+        );
+
         this.logger.debug(`✨ Role check result: ${hasRole}`);
-        
+
         if (!hasRole && permissionConfig.allowOwner) {
           this.logger.debug('🔍 Checking resource ownership');
           const resourceId = this.extractResourceId(request);
@@ -101,7 +119,7 @@ export class PermissionGuard implements CanActivate {
             return ownershipResult;
           }
         }
-        
+
         return hasRole;
       }
 
@@ -117,12 +135,25 @@ export class PermissionGuard implements CanActivate {
     }
   }
 
-  private async checkMultipleActions(userId: number, actions: string[], logicType: 'OR' | 'AND'): Promise<boolean> {
+  private mapActionToRoleId(action: string): number {
+    // แปลง action เป็น roleId (permission)
+    const actionMap: Record<string, number> = {
+      CREATE_USER: 15,
+      READ_USER: 15,
+      UPDATE_USER: 15,
+      DELETE_USER: 16,
+      CREATE_TICKET: 1,
+      // เพิ่ม mapping ตาม business logic ของคุณ
+    };
+    return actionMap[action] ?? 0;
+  }
+
+  private async checkMultipleActions(userId: number, actions: string[], logicType: 'OR' | 'AND', userPermissions: number[]): Promise<boolean> {
     this.logger.debug(`🔄 Checking ${actions.length} actions with ${logicType} logic for user ${userId}`);
     
     const results = await Promise.all(
       actions.map(async (action, index) => {
-        const result = await this.checkActionPermission(userId, action);
+        const result = await this.checkActionPermission(userId, action, userPermissions);
         this.logger.debug(`  ${index + 1}. ${action}: ${result}`);
         return result;
       })
@@ -139,29 +170,33 @@ export class PermissionGuard implements CanActivate {
     }
   }
 
-  private async checkActionPermission(userId: number, action: string): Promise<boolean> {
+  private async checkActionPermission(userId: number, action: string, userPermissions: number[]): Promise<boolean> {
     this.logger.debug(`🎬 Checking action '${action}' for user ${userId}`);
     
     try {
       const actionMap = {
-        'create_user': () => this.permissionService.canCreateUser(userId),
-        'read_user': () => this.permissionService.canReadUser(userId),
-        'update_user': () => this.permissionService.canUpdateUser(userId),
-        'delete_user': () => this.permissionService.canDeleteUser(userId),
-        'create_ticket': () => this.permissionService.canCreateTicket(userId),
-        'read_ticket': () => this.permissionService.canReadTicketDetial(userId),
-        'read_all_tickets': () => this.permissionService.canReadAllTickets(userId),
-        'update_ticket': () => this.permissionService.canUpdateTicket(userId),
-        'delete_ticket': () => this.permissionService.canDeleteTicket(userId),
-        'restore_ticket': () => this.permissionService.canRestoreTicket(userId),
-        'viwe_ticket_delete': () => this.permissionService.canViewDeletedTickets(userId),
-        'assign_ticket': () => this.permissionService.canAssignTicket(userId),
-        'change_status': () => this.permissionService.canChangeStatus(userId),
-        'solve_problem': () => this.permissionService.canSolveProblem(userId),
-        'create_project': () => this.permissionService.canCreateProject(userId),
-        'manage_category': () => this.permissionService.canManageCategory(userId),
-        'manage_status': () => this.permissionService.canManageStatus(userId),
-        'rate_satisfaction': () => this.permissionService.canRateSatisfaction(userId),
+        'create_user': () => this.permissionService.canCreateUser(userId, userPermissions),
+        'read_user': () => this.permissionService.canReadUser(userId, userPermissions),
+        'update_user': () => this.permissionService.canUpdateUser(userId, userPermissions),
+        'delete_user': () => this.permissionService.canDeleteUser(userId, userPermissions),
+        'create_ticket': () => this.permissionService.canCreateTicket(userId, userPermissions),
+        'read_ticket': () => this.permissionService.canReadTicketDetial(userId, userPermissions),
+        'read_all_tickets': () => this.permissionService.canReadAllTickets(userId, userPermissions),
+        'update_ticket': () => this.permissionService.canUpdateTicket(userId, userPermissions),
+        'delete_ticket': () => this.permissionService.canDeleteTicket(userId, userPermissions),
+        'restore_ticket': () => this.permissionService.canRestoreTicket(userId, userPermissions),
+        'viwe_ticket_delete': () => this.permissionService.canViewDeletedTickets(userId, userPermissions),
+        'assign_ticket': () => this.permissionService.canAssignTicket(userId, userPermissions),
+        'get_assign': () => this.permissionService.canGetAssign(userId, userPermissions),
+        'change_status': () => this.permissionService.canChangeStatus(userId, userPermissions),
+        'solve_problem': () => this.permissionService.canSolveProblem(userId, userPermissions),
+        'create_project': () => this.permissionService.canCreateProject(userId, userPermissions),
+        'read_project': () => this.permissionService.canReadProject(userId, userPermissions),
+        'read_all_project': () => this.permissionService.canReadAllProject(userId, userPermissions),
+        'manage_category': () => this.permissionService.canManageCategory(userId, userPermissions),
+        'manage_status': () => this.permissionService.canManageStatus(userId, userPermissions),
+        'rate_satisfaction': () => this.permissionService.canRateSatisfaction(userId, userPermissions),
+        'get_all_master_fillter': () => this.permissionService.canGetAllMasterFillter(userId, userPermissions),
       };
 
       const permissionCheck = actionMap[action];

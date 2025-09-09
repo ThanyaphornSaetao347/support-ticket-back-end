@@ -14,6 +14,6 @@ import { MasterRoleModule } from '../master_role/master_role.module';
   ],
   controllers: [UserAllowRoleController],
   providers: [UserAllowRoleService],
-  exports: [TypeOrmModule]
+  exports: [UserAllowRoleService, TypeOrmModule]
 })
 export class UserAllowRoleModule {}
