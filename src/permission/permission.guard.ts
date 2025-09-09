@@ -175,6 +175,7 @@ export class PermissionGuard implements CanActivate {
     
     try {
       const actionMap = {
+<<<<<<< HEAD
         'create_user': () => this.permissionService.canCreateUser(userId, userPermissions),
         'read_user': () => this.permissionService.canReadUser(userId, userPermissions),
         'update_user': () => this.permissionService.canUpdateUser(userId, userPermissions),
@@ -197,6 +198,30 @@ export class PermissionGuard implements CanActivate {
         'manage_status': () => this.permissionService.canManageStatus(userId, userPermissions),
         'rate_satisfaction': () => this.permissionService.canRateSatisfaction(userId, userPermissions),
         'get_all_master_fillter': () => this.permissionService.canGetAllMasterFillter(userId, userPermissions),
+=======
+        'create_user': () => this.permissionService.canCreateUser(userId),
+        'read_user': () => this.permissionService.canReadUser(userId),
+        'update_user': () => this.permissionService.canUpdateUser(userId),
+        'delete_user': () => this.permissionService.canDeleteUser(userId),
+        'create_ticket': () => this.permissionService.canCreateTicket(userId),
+        'read_ticket': () => this.permissionService.canReadTicketDetial(userId),
+        'read_all_tickets': () => this.permissionService.canReadAllTickets(userId),
+        'update_ticket': () => this.permissionService.canUpdateTicket(userId),
+        'delete_ticket': () => this.permissionService.canDeleteTicket(userId),
+        'restore_ticket': () => this.permissionService.canRestoreTicket(userId),
+        'viwe_ticket_delete': () => this.permissionService.canViewDeletedTickets(userId),
+        'assign_ticket': () => this.permissionService.canAssignTicket(userId),
+        'get_assign': () => this.permissionService.canGetAssign(userId),
+        'change_status': () => this.permissionService.canChangeStatus(userId),
+        'solve_problem': () => this.permissionService.canSolveProblem(userId),
+        'create_project': () => this.permissionService.canCreateProject(userId),
+        'read_project': () => this.permissionService.canReadProject(userId),
+        'read_all_project': () => this.permissionService.canReadAllProject(userId),
+        'manage_category': () => this.permissionService.canManageCategory(userId),
+        'manage_status': () => this.permissionService.canManageStatus(userId),
+        'rate_satisfaction': () => this.permissionService.canRateSatisfaction(userId),
+        'get_all_master_fillter': () => this.permissionService.canGetAllMasterFillter(userId),
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
       };
 
       const permissionCheck = actionMap[action];

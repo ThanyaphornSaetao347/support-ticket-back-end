@@ -21,7 +21,10 @@ import { PermissionModule } from '../permission/permission.module';
 import { UserModule } from '../users/users.module';
 import { UserAllowRoleModule } from 'src/user_allow_role/user_allow_role.module';
 import { UserAllowRole } from 'src/user_allow_role/entities/user_allow_role.entity';
+<<<<<<< HEAD
 import { TicketCategoriesModule } from 'src/ticket_categories/ticket_categories.module';
+=======
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
 
 @Module({
   imports: [
@@ -43,7 +46,10 @@ import { TicketCategoriesModule } from 'src/ticket_categories/ticket_categories.
     PermissionModule,
     UserModule,
     UserAllowRoleModule,
+<<<<<<< HEAD
     TicketCategoriesModule,
+=======
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
   ],
   controllers: [TicketController, TicketAttachmentController],
   providers: [

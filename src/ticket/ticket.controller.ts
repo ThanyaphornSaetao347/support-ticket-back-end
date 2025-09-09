@@ -52,7 +52,11 @@ export class TicketController {
     private readonly ticketStatusService: TicketStatusService,
     private readonly notiService: NotificationService,
     private readonly permissionService: PermissionService,
+<<<<<<< HEAD
     private readonly categoriesService: TicketCategoryService,
+=======
+    private readonly userService: UserService,
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
   ) { }
 
   // ✅ เพิ่ม Language Detection Methods
@@ -442,6 +446,7 @@ export class TicketController {
     @Request() req: any
   ) {
     try {
+<<<<<<< HEAD
       const status_id = Number(body.status_id);
       const assignTo = Number(body.user_id)
 
@@ -453,6 +458,10 @@ export class TicketController {
         body,
         filesCount: files?.length || 0
       });
+=======
+      // แปลงค่า status_id เป็น number
+      const status_id = Number(body.status_id);
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
 
       if (!status_id) {
         return { success: false, message: 'status_id is required' };
@@ -468,8 +477,12 @@ export class TicketController {
         body,
         files,
         userId,
+<<<<<<< HEAD
         status_id,
         assignTo // <--- เพิ่มตรงนี้
+=======
+        status_id
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
       );
 
       return {
@@ -486,7 +499,10 @@ export class TicketController {
     }
   }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('read_all_project', 'get_all_master_fillter')
   @Post('getAllMasterFilter')

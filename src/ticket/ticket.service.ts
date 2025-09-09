@@ -19,6 +19,7 @@ import { privateDecrypt } from 'crypto';
 import { NotificationType } from '../notification/entities/notification.entity';
 import { Users } from '../users/entities/user.entity';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
+<<<<<<< HEAD
 import { Project } from '../project/entities/project.entity';
 import { PermissionService } from '../permission/permission.service';
 import {
@@ -28,6 +29,12 @@ import {
   CategoryStatsDTO,
   DashboardResponse,
 } from './dto/dashboard.dto';
+=======
+import { Project } from 'src/project/entities/project.entity';
+import { data } from 'jquery';
+import { PermissionService } from '../permission/permission.service';
+import { log } from 'console';
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
 
 @Injectable()
 export class TicketService {
@@ -57,6 +64,7 @@ export class TicketService {
     private readonly notiService: NotificationService,
     private readonly permissionService: PermissionService,
   ) { }
+<<<<<<< HEAD
 
   // async getDashboardStats(
   //   year?: number,
@@ -273,6 +281,8 @@ export class TicketService {
 
     return Object.values(categoryMap);
   }
+=======
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
 
   // ✅ แก้ไข checkTicketOwnership สำหรับ PostgreSQL
   async checkTicketOwnership(userId: number, ticketId: number, userPermissions: number[]): Promise<boolean> {
@@ -949,9 +959,15 @@ export class TicketService {
 
   async getAllMasterFilter(userId: number): Promise<any> {
     try {
+<<<<<<< HEAD
       console.log('🔍 Starting getAllMasterFilter for userId:', userId);
 
       // 1️⃣ Categories
+=======
+      console.log('🔍 Starting getAllMAsterFilter for userId:', userId);
+
+      // Categories
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
       const categories = await this.categoryRepo
         .createQueryBuilder('tc')
         .innerJoin('ticket_categories_language', 'tcl', 'tcl.category_id = tc.id')
@@ -962,6 +978,7 @@ export class TicketService {
 
       console.log('✅ Categories found:', categories.length);
 
+<<<<<<< HEAD
       // 2️⃣ ตรวจสอบสิทธิ์ project
       const userPermissions: number[] = await this.checkUserPermissions(userId);
       const canViewAllMaster = await this.permissionService.canReadAllProject(userId, userPermissions);
@@ -983,6 +1000,24 @@ export class TicketService {
       projectsQuery = projectsQuery
         .select(['DISTINCT p.id AS id', 'p.name AS name']);
 
+=======
+      const canViewAllMaster = await this.permissionService.canReadAllProject(userId);
+      // ✅ Fixed Projects Query - ใช้ $1 แทน :userId
+      // สร้าง query builder
+      let projectsQuery = this.projectRepo
+        .createQueryBuilder("p")
+        .innerJoin("customer_for_project", "cp", "cp.project_id = p.id")
+        .where("p.isenabled = true")
+        .andWhere("cp.isenabled = true")
+        .select(["DISTINCT p.id AS id", "p.name AS name"]);
+
+      // เพิ่มเงื่อนไข filter ตาม user_id ถ้า user มีสิทธิ์จำกัด
+      if (!canViewAllMaster) {
+        projectsQuery = projectsQuery.andWhere("cp.user_id = :userId", { userId });
+      }
+
+      // สุดท้าย execute query
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
       const projects = await projectsQuery.getRawMany();
 
       console.log('✅ Projects found:', projects.length);
@@ -1003,6 +1038,10 @@ export class TicketService {
         message: 'Success',
         data: { categories, projects, status },
       };
+<<<<<<< HEAD
+=======
+
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
     } catch (error) {
       console.error('❌ Error in getAllMasterFilter:', {
         message: error.message,
@@ -1059,8 +1098,12 @@ export class TicketService {
     body: any,
     files: Express.Multer.File[],
     currentUserId: number,
+<<<<<<< HEAD
     status_id: number,
     assignTo: number,
+=======
+    status_id: number
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
   ) {
     const results: any = {};
 
@@ -1073,6 +1116,7 @@ export class TicketService {
     try {
       // 0. ตรวจสอบสิทธิ์
       const userPermissions = await this.checkUserPermissions(currentUserId);
+<<<<<<< HEAD
       if (![8, 19].some(p => userPermissions.includes(p))) {
         throw new Error('Permission denied');
       }
@@ -1097,6 +1141,27 @@ export class TicketService {
           where: { ticket_no: ticketNo },
           select: ['id']
         });
+=======
+      if (!userPermissions.includes(8)) throw new Error('Permission denied');
+
+      // 1. Update ticket fields + คำนวณเวลา
+      const chk = await this.updateTicketFieldsWithTimeCalculation(ticketNo, body, currentUserId, results);
+
+      // 2. Handle attachments
+      if (files?.length) {
+        const ticketForFiles = await queryRunner.manager.findOne(this.ticketRepo.target, { where: { ticket_no: ticketNo } });
+        if (!ticketForFiles) throw new Error(`Ticket ${ticketNo} not found`);
+        await this.createAttachments(files, ticketForFiles.id, currentUserId, results);
+      }
+
+      // 3. Update status + insert history
+      if (chk) {
+        // Update ticket status
+        await queryRunner.manager.update(this.ticketRepo.target, { ticket_no: ticketNo }, { status_id });
+
+        // ดึง ticket_id
+        const ticket = await queryRunner.manager.findOne(this.ticketRepo.target, { where: { ticket_no: ticketNo }, select: ['id'] });
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
         if (!ticket) throw new Error(`Ticket ${ticketNo} not found after update`);
 
         // Insert status_history
@@ -1106,6 +1171,7 @@ export class TicketService {
           create_by: currentUserId,
           create_date: new Date()
         });
+<<<<<<< HEAD
 
         if (assignTo) {
           console.log('🔄 Assigning ticket to user_id:', assignTo);
@@ -1141,6 +1207,8 @@ export class TicketService {
             console.log('Inserted new ticket_assigned:', newAssign)
           }
         }
+=======
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
       }
 
       await queryRunner.commitTransaction();
