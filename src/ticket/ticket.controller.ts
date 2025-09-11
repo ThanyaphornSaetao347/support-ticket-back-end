@@ -39,6 +39,9 @@ import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.enti
 import { UserService } from '../users/users.service';
 import { RequireAnyAction } from '../permission/permission.decorator';
 import { PermissionGuard } from '../permission/permission.guard';
+import { DashboardResponse, DashboardStatsResponse } from './dto/dashboard.dto';
+import { TicketCategoryService } from '../ticket_categories/ticket_categories.service';
+import { CategoryStatsDTO } from './dto/dashboard.dto';
 
 @Controller('api')
 export class TicketController {
@@ -47,17 +50,16 @@ export class TicketController {
     private readonly ticketRepo: Repository<Ticket>,
     private readonly ticketService: TicketService,
     private readonly ticketStatusService: TicketStatusService,
-    private readonly ststusService: TicketStatusService,
     private readonly notiService: NotificationService,
     private readonly permissionService: PermissionService,
-    private readonly userService: UserService,
-  ){}
+    private readonly categoriesService: TicketCategoryService,
+  ) { }
 
   // ✅ เพิ่ม Language Detection Methods
   private getLanguage(req: any, defaultLang: string = 'th'): string {
     try {
       console.log('🌐 Detecting language...');
-      
+
       // 1. จาก query parameter (?lang=th) - ความสำคัญสูงสุด
       if (req.query && req.query.lang) {
         const queryLang = String(req.query.lang).toLowerCase();
@@ -79,7 +81,7 @@ export class TicketController {
       if (req.headers && req.headers['accept-language']) {
         const acceptLang = req.headers['accept-language'];
         console.log(`🔍 Accept-Language: ${acceptLang}`);
-        
+
         const parsedLang = this.parseAcceptLanguage(acceptLang);
         if (parsedLang) {
           console.log(`✅ Detected language from Accept-Language: ${parsedLang}`);
@@ -97,7 +99,7 @@ export class TicketController {
       // 5. Default case
       console.log(`⚠️ Using default language: ${defaultLang}`);
       return defaultLang;
-      
+
     } catch (error) {
       console.error(`❌ Error detecting language:`, error);
       return defaultLang;
@@ -107,7 +109,7 @@ export class TicketController {
   // ✅ ตรวจสอบว่าภาษาที่ได้รับเป็นภาษาที่รองรับหรือไม่
   private validateLanguage(lang: string, defaultLang: string): string {
     const normalizedLang = lang.toLowerCase().trim();
-    
+
     // แปลงชื่อภาษาให้เป็นรหัสมาตรฐาน
     const langMapping = {
       'th': 'th',
@@ -141,7 +143,7 @@ export class TicketController {
       for (const lang of languages) {
         const mainLang = lang.code.split('-')[0]; // th-TH -> th
         const validatedLang = this.validateLanguage(mainLang, 'th');
-        
+
         if (validatedLang !== 'th' || mainLang === 'th') {
           return validatedLang;
         }
@@ -160,30 +162,30 @@ export class TicketController {
   private async isTicketOwner(userId: number, ticketId: number, userPermissions: number[]): Promise<boolean> {
     if (!userId || !ticketId) return false;
     try {
-        const isOwner = await this.ticketService.checkTicketOwnership(userId, ticketId, userPermissions);
-        if (!isOwner) {
-          throw new ForbiddenException('คุณไม่มีสิทธิ์เข้าถึงตั๋วนี้');
-        }
-        console.log(`👤 isTicketOwner: userId=${userId}, ticketId=${ticketId}, owner=${isOwner}`);
-        return isOwner;
+      const isOwner = await this.ticketService.checkTicketOwnership(userId, ticketId, userPermissions);
+      if (!isOwner) {
+        throw new ForbiddenException('คุณไม่มีสิทธิ์เข้าถึงตั๋วนี้');
+      }
+      console.log(`👤 isTicketOwner: userId=${userId}, ticketId=${ticketId}, owner=${isOwner}`);
+      return isOwner;
     } catch (error) {
-        console.error('💥 isTicketOwner error:', error);
-        return false;
+      console.error('💥 isTicketOwner error:', error);
+      return false;
     }
   }
 
   private async isTicketOwnerByNo(userId: number, ticketNo: string, userPermissions: number[]): Promise<boolean> {
     if (!userId || !ticketNo) return false;
     try {
-        const isOwner = await this.ticketService.checkTicketOwnershipByNo(userId, ticketNo, userPermissions);
-        if (!isOwner) {
-          throw new ForbiddenException('คุณไม่มีสิทธิ์เข้าถึงตั๋วนี้');
-        }
-        console.log(`👤 isTicketOwnerByNo: userId=${userId}, ticketNo=${ticketNo}, owner=${isOwner}`);
-        return isOwner;
+      const isOwner = await this.ticketService.checkTicketOwnershipByNo(userId, ticketNo, userPermissions);
+      if (!isOwner) {
+        throw new ForbiddenException('คุณไม่มีสิทธิ์เข้าถึงตั๋วนี้');
+      }
+      console.log(`👤 isTicketOwnerByNo: userId=${userId}, ticketNo=${ticketNo}, owner=${isOwner}`);
+      return isOwner;
     } catch (error) {
-        console.error('💥 isTicketOwnerByNo error:', error);
-        return false;
+      console.error('💥 isTicketOwnerByNo error:', error);
+      return false;
     }
   }
 
@@ -192,7 +194,7 @@ export class TicketController {
   private async canAccessTicket(userId: number, ticketId: number, userPermissions: number[]): Promise<boolean> {
     try {
       console.log(`🔍 Checking ticket access: ticket ${ticketId}, user ${userId}`);
-      
+
       if (!userId || !ticketId) {
         console.log(`❌ Invalid parameters: userId=${userId}, ticketId=${ticketId}`);
         return false;
@@ -227,36 +229,143 @@ export class TicketController {
     }
   }
 
+
+  @Get('dashboard')
+  async getDashboardStats() {
+    try {
+      console.log('🔍 Fetching dashboard statistics...');
+
+      // รวม query แบบ parallel
+      const [total, newTickets, inProgress, complete] = await Promise.all([
+        this.ticketRepo.find(),
+        this.ticketRepo.find({
+          where: { status_id: 1 },
+          select: ['id', 'create_date', 'update_date'],
+        }),
+        this.ticketRepo.find({ where: { status_id: 3 } }),
+        this.ticketRepo.find({
+          where: { status_id: 5 },
+          select: ['id', 'create_date', 'update_date'],
+        }),
+      ]);
+
+      const formatDates = (tickets: any[]) => tickets.map(t => ({
+        id: t.id,
+        createdAt: t.create_date,
+        completedAt: t.update_date,
+      }));
+
+      console.log('📊 Dashboard stats:', {
+        total: total.length,
+        new: newTickets.length,
+        inProgress: inProgress.length,
+        complete: complete.length
+      });
+
+      return {
+        code: '1',
+        status: 1,
+        message: 'Dashboard stats retrieved successfully',
+        data: {
+          total: total.length,
+          new: {
+            count: newTickets.length,
+            tickets: formatDates(newTickets)
+          },
+          inProgress: {
+            count: inProgress.length,
+            tickets: formatDates(inProgress)
+          },
+          complete: {
+            count: complete.length,
+            tickets: formatDates(complete)
+          },
+          updatedAt: new Date().toISOString()
+        }
+      };
+    } catch (error) {
+      console.error('❌ Error fetching dashboard stats:', error);
+
+      throw new HttpException(
+        {
+          code: '0',
+          status: 0,
+          message: 'Failed to retrieve dashboard statistics',
+          error: error.message
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+
+  // @Get('realtime')
+  // async getRealtimeStats(
+  //   @Request() req: any, // required parameter มาก่อน
+  //   @Query('userId') userId?: string,
+  // ): Promise<DashboardStatsResponse> {
+  //   const targetUserId = userId ? parseInt(userId) : req.user?.id;
+  //   const stats = await this.ticketService.getRealtimeStats(targetUserId);
+  //   return new DashboardStatsResponse(stats);
+  // }
+
+  // @Get('monthly/:year')
+  // async getMonthlyStats(
+  //   @Param('year') year: string, // required parameter
+  //   @Request() req: any, // required parameter
+  //   @Query('userId') userId?: string, // optional parameter
+  // ) {
+  //   const targetUserId = userId ? parseInt(userId) : req.user?.id;
+  //   return this.ticketService.getMonthlyTrend(parseInt(year), targetUserId);
+  // }
+
+  @Get('summaryCategories')
+  async getCategoryBreakdown(
+    @Request() req: any, // required parameter มาก่อน
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+    @Query('userId') userId?: string,
+  ): Promise<CategoryStatsDTO[]> {
+    const currentYear = year ? parseInt(year) : new Date().getFullYear();
+    const currentMonth = month ? parseInt(month) : new Date().getMonth() + 1;
+    const targetUserId = userId ? parseInt(userId) : req.user?.id;
+
+    return this.ticketService.getCategoryBreakdown(
+      currentYear,
+      currentMonth,
+    );
+  }
+
   @UseGuards(JwtAuthGuard, PermissionGuard)
-  @RequireAnyAction('create_user')
+  @RequireAnyAction('create_ticket')
   @Post('saveTicket')
   async saveTicket(@Body() dto: any, @Request() req: any): Promise<any> {
     const userId = req.user?.id || req.user?.sub || req.user?.user_id || req.user?.userId;
 
     if (!userId) {
-        return { code: 2, message: 'User not authenticated properly', data: null };
+      return { code: 2, message: 'User not authenticated properly', data: null };
     }
 
     // ส่วน validate และ save ticket เหมือนเดิม
     const transformedDto = {
-        ticket_id: dto.ticket_id ? parseInt(dto.ticket_id) : undefined,
-        project_id: parseInt(dto.project_id),
-        categories_id: parseInt(dto.categories_id),
-        issue_description: dto.issue_description,
-        status_id: dto.status_id ? parseInt(dto.status_id) : 1,
-        issue_attachment: dto.issue_attachment || null,
+      ticket_id: dto.ticket_id ? parseInt(dto.ticket_id) : undefined,
+      project_id: parseInt(dto.project_id),
+      categories_id: parseInt(dto.categories_id),
+      issue_description: dto.issue_description,
+      status_id: dto.status_id ? parseInt(dto.status_id) : 1,
+      issue_attachment: dto.issue_attachment || null,
     };
 
     try {
-        const result = await this.ticketService.saveTicket(transformedDto, userId);
-        return {
-            code: 1,
-            message: 'Success',
-            ticket_id: result.ticket_id,
-            ticket_no: result.ticket_no,
-        };
+      const result = await this.ticketService.saveTicket(transformedDto, userId);
+      return {
+        code: 1,
+        message: 'Success',
+        ticket_id: result.ticket_id,
+        ticket_no: result.ticket_no,
+      };
     } catch (error) {
-        return { code: 2, message: error.message || 'เกิดข้อผิดพลาด', data: null };
+      return { code: 2, message: error.message || 'เกิดข้อผิดพลาด', data: null };
     }
   }
 
@@ -328,24 +437,39 @@ export class TicketController {
   @UseInterceptors(FilesInterceptor('attachments'))
   async saveSupporter(
     @Param('ticket_no') ticketNo: string,
-    @Body() formData: any,
+    @Body() body: any,
     @UploadedFiles() files: Express.Multer.File[],
     @Request() req: any
   ) {
     try {
+      const status_id = Number(body.status_id);
+      const assignTo = Number(body.user_id)
+
+      console.log('📥 Incoming saveSupporter request:', {
+        ticketNo,
+        status_id,
+        assignTo,
+        userId: req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub,
+        body,
+        filesCount: files?.length || 0
+      });
+
+      if (!status_id) {
+        return { success: false, message: 'status_id is required' };
+      }
+
       const userId = req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub;
       if (!userId) {
-        return {
-          success: false,
-          message: 'User ID not found in token'
-        };
+        return { success: false, message: 'User ID not found in token' };
       }
 
       const result = await this.ticketService.saveSupporter(
         ticketNo,
-        formData,
+        body,
         files,
-        userId
+        userId,
+        status_id,
+        assignTo // <--- เพิ่มตรงนี้
       );
 
       return {
@@ -356,17 +480,15 @@ export class TicketController {
     } catch (error) {
       console.error('Error in saveSupporter:', error);
       throw new HttpException(
-        {
-          success: false,
-          message: 'Failed to save supporter data',
-          error: error.message
-        },
+        { success: false, message: 'Failed to save supporter data', error: error.message },
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
   }
 
-  @UseGuards(JwtAuthGuard)
+
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('read_all_project', 'get_all_master_fillter')
   @Post('getAllMasterFilter')
   async getAllMasterFilter(@Req() req) {
     try {
@@ -378,9 +500,11 @@ export class TicketController {
       if (!userId) {
         throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
       }
-
+      const userPermissions: number[] = Array.isArray(req.user?.permissions)
+        ? req.user.permissions
+        : [];
       // ✅ ดึงข้อมูล Master Filter
-      const result = await this.ticketService.getAllMAsterFilter(userId);
+      const result = await this.ticketService.getAllMasterFilter(userId);
       console.log('✅ getAllMasterFilter success');
 
       return {
@@ -479,7 +603,7 @@ export class TicketController {
   @ApiResponse({ status: 404, description: 'Ticket not found' })
   async updateTicketStatus(
     @Param('id', ParseIntPipe) ticketId: number,
-    @Body() body: { 
+    @Body() body: {
       status_id: number;
       fix_issue_description?: string;
       comment?: string;
@@ -502,8 +626,8 @@ export class TicketController {
       }
 
       const result = await this.ticketStatusService.updateTicketStatusAndHistory(
-        ticketId, 
-        body.status_id, 
+        ticketId,
+        body.status_id,
         userId,
         body.fix_issue_description,
         body.comment
@@ -642,7 +766,7 @@ export class TicketController {
         createSatisfactionDto,
         userId
       );
-      
+
       return {
         success: true,
         message: 'บันทึกคะแนนความพึงพอใจสำเร็จ',
@@ -665,31 +789,31 @@ export class TicketController {
     console.log('🔍 Request user object:', req.user);
     console.log('🔍 === extractUserId Debug ===');
     console.log('Full req.user object:', JSON.stringify(req.user, null, 2));
-    
+
     // ลองหาจากทุก property ที่เป็นไปได้
     const possibleUserIds = [
       req.user?.id,
-      req.user?.userId, 
+      req.user?.userId,
       req.user?.user_id,
       req.user?.sub,
       req.user?.ID,
       req.user?.Id,
       req.user?.USER_ID
     ];
-    
+
     console.log('Possible userIds:', possibleUserIds);
-    
+
     // หาค่าแรกที่ไม่ใช่ undefined/null
     const userId = possibleUserIds.find(id => id !== undefined && id !== null);
-    
+
     console.log('Selected userId:', userId, 'Type:', typeof userId);
-    
+
     // แปลงเป็น number
     const numericUserId = userId ? parseInt(userId.toString()) : null;
-    
+
     console.log('Final numeric userId:', numericUserId);
     console.log('=== End extractUserId Debug ===');
-    
+
     return numericUserId;
   }
 
@@ -734,7 +858,7 @@ export class TicketController {
           request_timestamp: new Date().toISOString()
         }
       };
-      
+
     } catch (error) {
       console.error('💥 Error getting ticket status:', error);
 

@@ -28,13 +28,13 @@ export class RoleManagementController {
   @Get()
   @RequireRoles(13) // เฉพาะ ADMIN
   async getAllRoles() {
-    return this.permissionService.getAllRoles();
+    return this.masterRoleService.getAllRoles();
   }
 
   @Get(':roleId')
   @RequireRoles(13)
   async getRole(@Param('roleId', ParseIntPipe) roleId: number) {
-    return this.permissionService.getRoleById(roleId);
+    return this.masterRoleService.getRoleById(roleId);
   }
 
   @Post()
@@ -61,7 +61,7 @@ export class RoleManagementController {
   @Get(':roleId/users')
   @RequireRoles(13)
   async getRoleUsers(@Param('roleId', ParseIntPipe) roleId: number) {
-    return this.permissionService.getUsersByRole(roleId);
+    return this.userAllowRoleService.getUsersByRole(roleId);
   }
 
   @Post('assign')

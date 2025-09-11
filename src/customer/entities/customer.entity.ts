@@ -22,7 +22,7 @@ export class Customer {
     create_date?: Date;
 
     @Column()
-    craete_by!: number;
+    create_by!: number;
 
     @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP'})
     update_date?: Date;

@@ -1,19 +1,20 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Patch, 
-  Param, 
-  Delete, 
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
   HttpCode,
   HttpStatus,
   ParseIntPipe,
   Request,
   NotFoundException,
   BadRequestException,
-  UseGuards
- } from '@nestjs/common';
+  UseGuards,
+  InternalServerErrorException
+} from '@nestjs/common';
 import { TicketStatusHistoryService } from './ticket_status_history.service';
 import { CreateTicketStatusHistoryDto } from './dto/create-ticket_status_history.dto';
 import { UpdateTicketStatusHistoryDto } from './dto/update-ticket_status_history.dto';
@@ -21,35 +22,38 @@ import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 
 @Controller('api')
 export class TicketStatusHistoryController {
-  constructor(private readonly ticketStatusHistoryService: TicketStatusHistoryService) {}
+  constructor(private readonly ticketStatusHistoryService: TicketStatusHistoryService) { }
 
   @Get('ticket/:ticketId/current-status')
   @UseGuards(JwtAuthGuard)
   async getCurrentStatus(
-    @Param('ticketId', ParseIntPipe) ticketId: number,
-    @Request() req: any
-  ) {
-    try {
-      const currentStatus = await this.ticketStatusHistoryService.getCurrentTicketStatus(ticketId);
-      
-      if (!currentStatus) {
-        throw new NotFoundException(`Ticket ${ticketId} not found`);
-      }
-      
-      return {
-        success: true,
-        message: 'Current status retrieved',
-        data: currentStatus
-      };
-    } catch (error) {
-      console.error('💥 Error getting current status:', error);
-      return {
-        success: false,
-        message: 'Failed to get current status',
-        error: error.message
-      };
+  @Param('ticketId', ParseIntPipe) ticketId: number,
+  @Request() req: any
+) {
+  try {
+    const currentStatus = await this.ticketStatusHistoryService.getCurrentTicketStatus(ticketId);
+
+    if (!currentStatus) {
+      throw new NotFoundException(`Ticket ${ticketId} not found`);
     }
+
+    return {
+      success: true,
+      message: 'Current status retrieved',
+      data: currentStatus,
+    };
+  } catch (error) {
+    // ถ้าเป็น HTTP exception ให้ throw ออก
+    if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      throw error;
+    }
+
+    console.error('💥 Error getting current status:', error);
+
+    // throw หรือ return internal error
+    throw new InternalServerErrorException('Failed to get current status');
   }
+}
 
   // ✅ POST - บันทึก status change (แก้ไขแล้ว)
   @Post('history/:ticketId')
@@ -101,7 +105,7 @@ export class TicketStatusHistoryController {
   @HttpCode(HttpStatus.CREATED)
   async logStatusChange(
     @Param('ticketId', ParseIntPipe) ticketId: number,
-    @Body() body: { 
+    @Body() body: {
       status_id: number;
       status_name?: string; // optional สำหรับ validation
     },

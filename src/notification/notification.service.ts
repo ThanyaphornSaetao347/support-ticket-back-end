@@ -9,7 +9,7 @@ import { Ticket } from '../ticket/entities/ticket.entity';
 import { TicketStatus } from '../ticket_status/entities/ticket_status.entity';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 import { MailerService } from '@nestjs-modules/mailer';
-import { UserAllowRole } from 'src/user_allow_role/entities/user_allow_role.entity';
+import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
 
 @Injectable()
 export class NotificationService {

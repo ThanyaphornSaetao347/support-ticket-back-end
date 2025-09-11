@@ -13,7 +13,7 @@ export class TicketCategoryService {
 
     @InjectRepository(TicketCategoryLanguage)
     private readonly categoryLangRepo: Repository<TicketCategoryLanguage>
-  ) {}
+  ) { }
 
   async getCategoriesDDL(languageId?: string) {
     try {
@@ -21,7 +21,7 @@ export class TicketCategoryService {
 
       // สร้าง query ใหม่โดยเริ่มจาก language table
       let queryBuilder;
-      
+
       if (languageId && languageId.trim() !== '') {
         console.log('Filtering by language:', languageId);
         queryBuilder = this.categoryLangRepo
@@ -38,7 +38,7 @@ export class TicketCategoryService {
 
       const results = await queryBuilder
         .select([
-          'tc.id as tc_id', 
+          'tc.id as tc_id',
           'tcl.name as tcl_name',
           'tcl.language_id as tcl_language_id'
         ])
@@ -102,7 +102,7 @@ export class TicketCategoryService {
       }
 
       // ตรวจสอบชื่อซ้ำในชุดข้อมูลเดียวกัน
-      const names = createCategoryDto.languages.map(lang => 
+      const names = createCategoryDto.languages.map(lang =>
         `${lang.language_id}:${lang.name.toLowerCase().trim()}`
       );
       const uniqueNames = [...new Set(names)];
@@ -242,40 +242,43 @@ export class TicketCategoryService {
   }
 
   // Method สำหรับ validate ข้อมูลก่อนสร้าง/อัพเดต
-  async validateCategoryData(languages: { language_id: string; name: string }[], excludeCategoryId?: number) {
+  async validateCategoryData(languages: { language_id: string; name: string }[]): Promise<string[]> {
     const errors: string[] = [];
 
-    // ตรวจสอบซ้ำในฐานข้อมูล
+    const languageIds = new Set<string>();
+    const names = new Set<string>();
+
     for (const lang of languages) {
-      const isDuplicate = await this.checkCategoryNameExists(
-        lang.name, 
-        lang.language_id, 
-        excludeCategoryId
-      );
-      
-      if (isDuplicate) {
+      // เช็ค duplicate language_id ใน request
+      if (languageIds.has(lang.language_id)) {
+        errors.push('Duplicate language_id found in the request');
+      } else {
+        languageIds.add(lang.language_id);
+      }
+
+      // เช็ค duplicate name ใน request (ข้ามภาษา)
+      if (names.has(lang.name)) {
+        errors.push('Duplicate category name found in the request');
+      } else {
+        names.add(lang.name);
+      }
+
+      // เช็คชื่อซ้ำกับ DB
+      const existingCategory = await this.categoryLangRepo
+        .createQueryBuilder('tcl')
+        .innerJoin('tcl.category', 'tc')
+        .where('tcl.name = :name', { name: lang.name })
+        .andWhere('tcl.language_id = :languageId', { languageId: lang.language_id })
+        .getOne();
+
+      if (existingCategory) {
         errors.push(`Category name "${lang.name}" already exists for language "${lang.language_id}"`);
       }
     }
 
-    // ตรวจสอบซ้ำในชุดข้อมูลที่ส่งมา
-    const languageIds = languages.map(lang => lang.language_id);
-    const uniqueLanguageIds = [...new Set(languageIds)];
-    if (languageIds.length !== uniqueLanguageIds.length) {
-      errors.push('Duplicate language_id found in the request');
-    }
-
-    // ตรวจสอบชื่อซ้ำในชุดข้อมูลเดียวกัน
-    const names = languages.map(lang => 
-      `${lang.language_id}:${lang.name.toLowerCase().trim()}`
-    );
-    const uniqueNames = [...new Set(names)];
-    if (names.length !== uniqueNames.length) {
-      errors.push('Duplicate category name found in the same language within the request');
-    }
-
     return errors;
   }
+
 
   // Debug method เพื่อตรวจสอบข้อมูล
   async debugCategoryData() {

@@ -88,4 +88,12 @@ export class MasterRoleService {
 
     return role;
   }
+
+  async getAllRoles(): Promise<MasterRole[]> {
+    return this.masterRoleRepo.find({ order: { id: 'ASC' } });
+  }
+
+  async getRoleById(roleId: number): Promise<MasterRole | null> {
+    return this.masterRoleRepo.findOne({ where: { id: roleId } });
+  }
 }

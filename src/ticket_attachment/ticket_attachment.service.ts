@@ -391,12 +391,15 @@ export class AttachmentService {
     }
 
     // ลบไฟล์จริง
-    const filePath = path.join(__dirname, '..', '..', 'public', 'images', 'issue_attachment', attachment.filename);
+    const fileIssuePath = path.join(__dirname, '..', '..', 'public', 'images', 'issue_attachment', attachment.filename);
+    const fileFixIssuePath = path.join(__dirname, '..', '..', 'public', 'images', 'issue_attachment', attachment.filename);
 
     try {
-      await fs.promises.unlink(filePath);
+      await fs.promises.unlink(fileIssuePath);
+      await fs.promises.unlink(fileFixIssuePath);
     } catch (error) {
-      console.warn('File might already be deleted or not found:', filePath);
+      console.warn('File issue might already be deleted or not found:', fileIssuePath);
+      console.warn('File fix issue might already be deleted or not found:', fileFixIssuePath);
     }
 
     await this.attachmentRepo.remove(attachment);

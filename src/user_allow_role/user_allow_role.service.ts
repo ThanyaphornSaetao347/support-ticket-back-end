@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { UserAllowRole } from './entities/user_allow_role.entity';
 import { Repository, In } from 'typeorm';
 import { MasterRole } from '../master_role/entities/master_role.entity';
+import { Users } from 'src/users/entities/user.entity';
 
 @Injectable()
 export class UserAllowRoleService {
@@ -159,4 +160,14 @@ export class UserAllowRoleService {
     const createDto: CreateUserAllowRoleDto = { user_id, role_id: role_ids };
     return await this.create(createDto);
   }
+
+  async getUsersByRole(roleId: number): Promise<Users[]> {
+    const userAllowRoles = await this.userAllowRepo.find({
+      where: { role_id: roleId },
+      relations: ['user'], // ต้องมี relation ใน entity UserAllowRole ชื่อ 'user'
+    });
+
+    return userAllowRoles.map(uar => uar.user); // map ให้ได้ Users[]
+  }
+
 }

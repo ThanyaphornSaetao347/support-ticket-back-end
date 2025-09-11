@@ -18,6 +18,14 @@ export class TicketAssignedController {
     private readonly userAllowRoleRepo: Repository<UserAllowRole>,
   ) {}
 
+  // Controller Methods
+  @Get('tickets/assign/users/role9')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAction('assign_ticket')
+  async getRole9Users() {
+    return this.ticketAssignedService.getRole9Users();
+  }
+
   @Post('tickets/assign/:ticket_no')
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAction('assign_ticket')
@@ -26,17 +34,12 @@ export class TicketAssignedController {
     @Body('assignedTo') assignedTo: number,
     @Request() req: any
   ) {
-    const userId = req.user.id;
+    const assignedBy = req.user.id;
 
-    const roles = await this.userAllowRoleRepo.find({ where: { user_id: userId } });
-    const userRoleIds = roles.map(r => r.role_id);
-    const allowedRoles = [5, 6, 7, 8, 9, 10, 11];
-
-    const hasPermission = userRoleIds.some(role => allowedRoles.includes(role));
-    if (!hasPermission) {
-      throw new ForbiddenException('ไม่มีสิทธิ์มอบหมายงาน');
-    }
-
-    return this.ticketAssignedService.assignTicketByTicketNo(ticketNo, assignedTo, userId);
+    return this.ticketAssignedService.assignTicketByTicketNo(
+      ticketNo,
+      assignedTo,
+      assignedBy // ส่งแค่ userId ให้ service ดึง permissions เอง
+    );
   }
 }

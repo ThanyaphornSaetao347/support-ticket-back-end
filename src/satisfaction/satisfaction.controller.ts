@@ -1,15 +1,22 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, UseGuards, Request, NotFoundException } from '@nestjs/common';
 import { SatisfactionService } from './satisfaction.service';
 import { CreateSatisfactionDto } from './dto/create-satisfaction.dto';
 import { UpdateSatisfactionDto } from './dto/update-satisfaction.dto';
+import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 
-@Controller('satisfaction')
+@Controller('api/satisfaction')
 export class SatisfactionController {
   constructor(private readonly satisfactionService: SatisfactionService) {}
 
-  @Post()
-  create(@Body() createSatisfactionDto: CreateSatisfactionDto) {
-    return this.satisfactionService.create(createSatisfactionDto);
+  @UseGuards(JwtAuthGuard)
+  @Post(':ticketId')
+  create(
+    @Param('ticketId', ParseIntPipe) ticketId: number,
+    @Body() createSatisfactionDto: CreateSatisfactionDto,
+    @Request() req
+  ) {
+    const createBy = req.user.id || req.user.sub || req.user.userId;
+    return this.satisfactionService.create(ticketId, createBy, createSatisfactionDto);
   }
 
   @Get()
