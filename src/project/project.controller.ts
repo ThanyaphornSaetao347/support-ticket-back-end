@@ -1,9 +1,10 @@
-import { Controller, Post, Get, UseGuards, Request, Param, ParseIntPipe, Body } from '@nestjs/common';
+import { Controller, Post, Get, UseGuards, Request, Param, ParseIntPipe, Body, Req } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 import { ProjectService } from './project.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequireAnyAction } from '../permission/permission.decorator';
+import { request } from 'http';
 
 @Controller('api')
 export class ProjectController {
@@ -43,6 +44,12 @@ export class ProjectController {
     console.log('User in request:', req.user);
     const userId = req.user.id || req.user.sub || req.user.userId;
     return this.projectService.getProjectsForUser(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('get_all_project')
+  async getProjectAll() {
+    return await this.projectService.getProjects()
   }
 
   @UseGuards(JwtAuthGuard)

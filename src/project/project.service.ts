@@ -11,15 +11,15 @@ export class ProjectService {
   constructor(
     @InjectRepository(Project)
     private projectRepository: Repository<Project>,
-    
+
     @InjectRepository(CustomerForProject)
     private customerForProjectRepository: Repository<CustomerForProject>,
-    
+
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
-  ) {}
+  ) { }
 
-   // เพิ่มเมธอดสร้างโปรเจคใหม่
+  // เพิ่มเมธอดสร้างโปรเจคใหม่
   async createProject(createProjectDto: CreateProjectDto) {
     try {
       const { create_by, ...projectData } = createProjectDto;
@@ -58,7 +58,7 @@ export class ProjectService {
   async getProjectsForUser(userId: number) {
     try {
       console.log('Getting projects for user:', userId);
-      
+
       // ใช้ ORM QueryBuilder แทน raw query
       const results = await this.customerForProjectRepository
         .createQueryBuilder('cfp')
@@ -69,7 +69,7 @@ export class ProjectService {
         .andWhere('p.isenabled = :projectEnabled', { projectEnabled: true })
         .select([
           'p.id as project_id',
-          'p.name as project_name', 
+          'p.name as project_name',
           'c.id as customer_id',
           'c.name as customer_name'
         ])
@@ -107,6 +107,40 @@ export class ProjectService {
         status: false,
         message: 'Failed to fetch projects',
         error: error.message,
+      };
+    }
+  }
+
+  async getProjects() {
+    try {
+      const result = await this.projectRepository.query(`
+          SELECT id, name
+          FROM project
+          WHERE isenabled = TRUE
+      `);
+
+      if (!result || result.length === 0) {
+        return {
+          code: 1,
+          status: false,
+          message: "ไม่พบข้อมูลโปรเจค",
+          data: []
+        };
+      }
+
+      return {
+        code: 0,
+        status: true,
+        message: 'Get all projects successful',
+        data: result
+      };
+    } catch (error) {
+      console.log('Error of get all project:', error);
+      return {
+        code: 1,
+        status: false,
+        message: 'เกิดข้อผิดพลาดในการดึงข้อมูลโปรเจค',
+        data: []
       };
     }
   }
