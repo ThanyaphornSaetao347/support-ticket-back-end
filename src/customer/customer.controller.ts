@@ -24,6 +24,7 @@ export class CustomerController {
     createCustomerDto.update_by = userId;
 
     return this.customerService.create(createCustomerDto, userId);
+<<<<<<< HEAD
   }
 
   @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -31,6 +32,8 @@ export class CustomerController {
   @Get('get_customer_data')
   async getCustomerData() {
     return this.customerService.getCustomer()
+=======
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
   }
 
   @UseGuards(JwtAuthGuard)
@@ -49,6 +52,7 @@ export class CustomerController {
     return this.customerService.findCustomersByUserId(userId);
   }
 
+<<<<<<< HEAD
   // ใน customer.controller.ts
   @Get('getOne/:id')
   findOne(@Param('id') rawId: string) {
@@ -65,6 +69,17 @@ export class CustomerController {
 
   @UseGuards(JwtAuthGuard)
   @Patch('update/:id')
+=======
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.customerService.findOne(+id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id')
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
   update(
     @Param('id') id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
