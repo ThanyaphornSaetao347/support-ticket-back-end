@@ -108,6 +108,10 @@ export class PermissionService {
     return this.hasRole(userId, 16, userPermissions);
   }
 
+  async canCreateCustomer(userId: number, userPermissions: number[]): Promise<boolean> {
+    return this.hasRole(userId, 20, userPermissions);
+  }
+
   async canCreateTicket(userId: number, userPermissions: number[]): Promise<boolean> {
     return this.hasRole(userId, 1, userPermissions);
   }
@@ -148,8 +152,9 @@ export class PermissionService {
   }
 
   async canCreateProject(userId: number, userPermissions: number[]): Promise<boolean> {
-    return this.hasAnyRole(userId, [10, 13], userPermissions);
+    return this.hasAnyRole(userId, [10], userPermissions);
   }
+  
   async canReadProject(userId: number, userPermissions: number[]): Promise<boolean> {
     return this.hasAnyRole(userId, [1], userPermissions);
   }

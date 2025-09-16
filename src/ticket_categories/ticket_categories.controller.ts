@@ -2,6 +2,8 @@ import { Controller, Post, Body, UseGuards, Get, Put, Delete, Param, ParseIntPip
 import { TicketCategoryService } from './ticket_categories.service';
 import { CreateCategoryDto } from './dto/create-ticket_category.dto';
 import { JwtAuthGuard } from '../auth/jwt_auth.guard';
+import { PermissionGuard } from '../permission/permission.guard';
+import { RequireAnyAction } from '../permission/permission.decorator';
 
 @Controller('api')
 export class TicketCategoryController {
@@ -26,7 +28,8 @@ export class TicketCategoryController {
     return this.categoryService.findOne(id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('manage_category')
   @Post('categories')
   async createCategory(@Body() createCategoryDto: CreateCategoryDto, @Request() req) {
     const userId = req.user.id || req.user.sub || req.user.userId;

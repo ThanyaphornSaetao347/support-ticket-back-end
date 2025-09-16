@@ -30,7 +30,10 @@ export class Customer {
     @Column()
     update_by!: number;
 
-    @Column({ default: true})
+    @Column({ default: true })
+    status: boolean;
+
+    @Column({ default: true })
     isenabled?: boolean;
 
     @OneToMany(() => CustomerForProject, customerForProject => customerForProject.customer)

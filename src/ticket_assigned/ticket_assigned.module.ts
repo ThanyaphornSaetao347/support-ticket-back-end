@@ -7,8 +7,8 @@ import { Ticket } from '../ticket/entities/ticket.entity';
 import { TicketAssigned } from './entities/ticket_assigned.entity';
 import { Users } from '../users/entities/user.entity';
 import { NotificationModule } from '../notification/notification.module';
-import { PermissionModule } from 'src/permission/permission.module';
-import { UserAllowRoleModule } from 'src/user_allow_role/user_allow_role.module';
+import { PermissionModule } from '../permission/permission.module';
+import { UserAllowRoleModule } from '../user_allow_role/user_allow_role.module';
 
 @Module({
   imports: [

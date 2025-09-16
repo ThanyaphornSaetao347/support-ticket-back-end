@@ -197,6 +197,7 @@ export class PermissionGuard implements CanActivate {
         'manage_status': () => this.permissionService.canManageStatus(userId, userPermissions),
         'rate_satisfaction': () => this.permissionService.canRateSatisfaction(userId, userPermissions),
         'get_all_master_fillter': () => this.permissionService.canGetAllMasterFillter(userId, userPermissions),
+        'manage_customer': () => this.permissionService.canCreateCustomer(userId, userPermissions),
       };
 
       const permissionCheck = actionMap[action];

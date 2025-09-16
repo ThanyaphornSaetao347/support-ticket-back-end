@@ -73,6 +73,7 @@ describe('ProjectService', () => {
       const createProjectDto: CreateProjectDto = {
         name: 'New Project',
         create_by: 1,
+        status: true,
       };
 
       projectRepository.create.mockReturnValueOnce(mockProject as any);
@@ -97,6 +98,7 @@ describe('ProjectService', () => {
     it('should return error when create_by is missing', async () => {
       const createProjectDto: CreateProjectDto = {
         name: 'New Project',
+        status: true,
       };
 
       const result = await service.createProject(createProjectDto);
@@ -113,6 +115,7 @@ describe('ProjectService', () => {
       const createProjectDto: CreateProjectDto = {
         name: 'New Project',
         create_by: 1,
+        status: true,
       };
 
       projectRepository.create.mockReturnValueOnce(mockProject as any);

@@ -11,7 +11,7 @@ export class CustomerService {
   constructor(
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
-  ) {}
+  ) { }
 
   async create(createCustomerDto: CreateCustomerDto, userId: number) {
     const customer = new Customer();
@@ -33,6 +33,36 @@ export class CustomerService {
     };
   }
 
+  async getCustomer() {
+    try {
+      const result = await this.customerRepository
+        .createQueryBuilder('c')
+        .select([
+          'c.name',
+          'c.address',
+          'c.email',
+          'c.telephone',
+          'c.status'
+        ])
+        .getMany();
+
+      return {
+        code: 0,
+        status: true,
+        message: 'get customer data successfully',
+        data: result
+      }
+    } catch (error) {
+      console.log('Error get customer:', error)
+
+      return {
+        code: 1,
+        status: false,
+        message: error
+      }
+    }
+  }
+
   async findAll() {
     const customers = await this.customerRepository.find({
       where: { isenabled: true },
@@ -48,8 +78,21 @@ export class CustomerService {
   }
 
   async findOne(id: number) {
+    // เพิ่มการตรวจสอบ input
+    console.log('CustomerService.findOne received:', id, typeof id);
+
+    // ตรวจสอบว่า id ถูกต้องหรือไม่
+    if (id === null || id === undefined || isNaN(id) || !Number.isInteger(Number(id))) {
+      return {
+        code: 0,
+        status: false,
+        message: `Invalid customer ID: ${id}`,
+        data: null
+      };
+    }
+
     const customer = await this.customerRepository.findOne({
-      where: { id, isenabled: true }
+      where: { id: Number(id), isenabled: true }  // แปลงเป็น Number ให้แน่ใจ
     });
 
     if (!customer) {
@@ -86,7 +129,7 @@ export class CustomerService {
     if (updateCustomerDto.address) customer.address = updateCustomerDto.address;
     if (updateCustomerDto.telephone) customer.telephone = updateCustomerDto.telephone;
     if (updateCustomerDto.email) customer.email = updateCustomerDto.email;
-    
+
     customer.update_date = new Date();
     customer.update_by = userId;
 
@@ -123,7 +166,7 @@ export class CustomerService {
       data: null
     };
   }
-  
+
   async findCustomersByUserId(userId: number) {
     const customers = await this.customerRepository
       .createQueryBuilder('c')

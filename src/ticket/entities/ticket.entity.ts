@@ -6,6 +6,7 @@ import { TicketCategory } from '../../ticket_categories/entities/ticket_category
 import { Project } from '../../project/entities/project.entity';
 import { TicketStatus } from '../../ticket_status/entities/ticket_status.entity';
 import { Satisfaction } from '../../satisfaction/entities/satisfaction.entity';
+import { Users } from '../../users/entities/user.entity';
 
 @Entity('ticket')
 export class Ticket {
@@ -87,4 +88,8 @@ export class Ticket {
   @ManyToOne(() => TicketStatus, status => status.ticket)
   @JoinColumn({ name: 'status_id'})
   status: TicketStatus;
+
+  @ManyToOne(() => Users)
+  @JoinColumn({ name: 'create_by'})
+  user: Users;
 }

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, UseGuards, Request, Param, ParseIntPipe, Body } from '@nestjs/common';
+import { Controller, Post, Get, UseGuards, Request, Param, ParseIntPipe, Body, Req } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 import { ProjectService } from './project.service';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -25,7 +25,7 @@ export class ProjectController {
   }
 
   @UseGuards(JwtAuthGuard, PermissionGuard)
-  @RequireAnyAction('create_projcet')
+  @RequireAnyAction('create_project')
   @Post('projects')
   async createProject(@Body() createProjectDto: CreateProjectDto, @Request() req) {
     console.log('User in request:', req.user);
@@ -43,6 +43,12 @@ export class ProjectController {
     console.log('User in request:', req.user);
     const userId = req.user.id || req.user.sub || req.user.userId;
     return this.projectService.getProjectsForUser(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('get_all_project')
+  async getProjectAll() {
+    return await this.projectService.getProjects()
   }
 
   @UseGuards(JwtAuthGuard)

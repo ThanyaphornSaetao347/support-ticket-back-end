@@ -189,7 +189,7 @@ describe('TicketAttachmentController', () => {
       const docAttachment = { ...mockAttachment, extension: 'docx' };
       attachmentService.findById = jest.fn().mockResolvedValue(docAttachment);
 
-      await controller.getIssueAttachmentFile(1, mockResponse);
+      await controller.getFixIssueAttachmentImage(1, mockResponse);
 
       expect(attachmentService.findById).toHaveBeenCalledWith(1);
       expect(mockResponse.set).toHaveBeenCalledWith(

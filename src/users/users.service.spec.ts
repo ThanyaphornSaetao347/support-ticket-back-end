@@ -8,7 +8,7 @@ import { NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { CreateUserAllowRoleDto } from 'src/user_allow_role/dto/create-user_allow_role.dto';
+import { CreateUserAllowRoleDto } from '../user_allow_role/dto/create-user_allow_role.dto';
 
 describe('UserService', () => {
   let service: UserService;

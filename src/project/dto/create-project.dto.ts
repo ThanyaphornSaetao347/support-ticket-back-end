@@ -6,4 +6,7 @@ export class CreateProjectDto {
 
     @IsOptional()
     create_by?: number;
+
+    @IsOptional()
+    status: boolean
 }
