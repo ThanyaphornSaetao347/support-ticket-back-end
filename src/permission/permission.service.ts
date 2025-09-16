@@ -108,10 +108,19 @@ export class PermissionService {
     return this.hasRole(userId, 16, userPermissions);
   }
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> fef258e11fb85526f63cfa733c58125e62453040
   async canCreateCustomer(userId: number, userPermissions: number[]): Promise<boolean> {
     return this.hasRole(userId, 20, userPermissions);
   }
 
+<<<<<<< HEAD
+=======
+=======
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
+>>>>>>> fef258e11fb85526f63cfa733c58125e62453040
   async canCreateTicket(userId: number, userPermissions: number[]): Promise<boolean> {
     return this.hasRole(userId, 1, userPermissions);
   }
@@ -178,6 +187,105 @@ export class PermissionService {
     return this.hasRole(userId, 14, userPermissions);
   }
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+  async canDeleteUser(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 16); // ADMIN = 13, USER_MANAGER = 15
+  }
+
+  // Ticket Management Permissions
+  async canCreateTicket(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 1); // REPORTER = 1
+  }
+
+  async canReadTicketDetial(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 12); // REPORTER, TRACKER, TICKET_OWNER, ADMIN
+  }
+
+  async canReadAllTickets(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 13); // TRACKER = 2, ADMIN = 13
+  }
+
+  async canUpdateTicket(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [3,19]); // EDITOR = 3, PROBLEM_SOLVER = 8, ADMIN = 13
+  }
+
+  async canDeleteTicket(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [4, 19]); // DELETER = 4, ADMIN = 13
+  }
+
+  async canRestoreTicket(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [11, 19]); // RESTORER = 11, ADMIN = 13
+  }
+
+  async canViewDeletedTickets(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [11, 19]); // RESTORER = 11, ADMIN = 13
+  }
+
+  async canGetAllMasterFillter(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [1, 13])
+  }
+
+  // Ticket Operations
+  async canAssignTicket(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [19]); // ASSIGNOR = 19
+  }
+
+  async canGetAssign(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 9)
+  }
+
+  async canChangeStatus(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [5, 13]); // STATUS_CHANGER = 5, ADMIN = 13
+  }
+
+  async canSolveProblem(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [8, 13]); // PROBLEM_SOLVER = 8, ADMIN = 13
+  }
+
+  // Project Management
+  async canCreateProject(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [10, 13]); // PROJECT_MANAGER = 10, ADMIN = 13
+  }
+
+  async canReadProject(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [1]); // 1
+  }
+
+  async canReadAllProject(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [13])
+  }
+
+  async canUpdateProject(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [10, 13]); // PROJECT_MANAGER = 10, ADMIN = 13
+  }
+
+  async canDeleteProject(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [10, 13]); // PROJECT_MANAGER = 10, ADMIN = 13
+  }
+
+  // Category Management
+  async canManageCategory(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [17, 13]); // CATEGORY_MANAGER = 17, ADMIN = 13
+  }
+
+  // Status Management
+  async canManageStatus(userId: number): Promise<boolean> {
+    return this.hasAnyRole(userId, [18, 13]); // STATUS_MANAGER = 18, ADMIN = 13
+  }
+
+  // Satisfaction
+  async canRateSatisfaction(userId: number): Promise<boolean> {
+    return this.hasRole(userId, 14); // RATER = 14
+  }
+
+  /**
+   * ตรวจสอบว่าเป็นเจ้าของ resource หรือไม่
+   */
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
   async isResourceOwner(userId: number, resourceCreatorId: number): Promise<boolean> {
     return userId === resourceCreatorId;
   }
@@ -211,6 +319,10 @@ export class PermissionService {
   async debugUserPermissions(userId: number, userPermissions: number[]): Promise<any> {
     return {
       userId,
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
       userPermissions,
       canCreateUser: await this.canCreateUser(userId, userPermissions),
       canReadUser: await this.canReadUser(userId, userPermissions),
@@ -221,6 +333,23 @@ export class PermissionService {
       canAssignTicket: await this.canAssignTicket(userId, userPermissions),
       canGetAssign: await this.canGetAssign(userId, userPermissions),
       canChangeStatus: await this.canChangeStatus(userId, userPermissions),
+<<<<<<< HEAD
+=======
+=======
+      userInfo,
+      permissions: {
+        canCreateUser: await this.canCreateUser(userId),
+        canReadUser: await this.canReadUser(userId),
+        canCreateTicket: await this.canCreateTicket(userId),
+        canReadAllTickets: await this.canReadAllTickets(userId),
+        canUpdateTicket: await this.canUpdateTicket(userId),
+        canDeleteTicket: await this.canDeleteTicket(userId),
+        canAssignTicket: await this.canAssignTicket(userId),
+        canGetAssign: await this.canGetAssign(userId),
+        canChangeStatus: await this.canChangeStatus(userId),
+      }
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
     };
   }
 }

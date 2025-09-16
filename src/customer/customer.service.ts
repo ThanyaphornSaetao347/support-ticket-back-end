@@ -41,8 +41,12 @@ export class CustomerService {
           'c.name',
           'c.address',
           'c.email',
+<<<<<<< HEAD
           'c.telephone',
           'c.status'
+=======
+          'c.telephone'
+>>>>>>> fef258e11fb85526f63cfa733c58125e62453040
         ])
         .getMany();
 

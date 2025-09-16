@@ -4,8 +4,13 @@ import { CustomerForProjectService } from './customer_for_project.service';
 import { CreateCustomerForProjectDto } from './dto/create-customer_for_project.dto';
 import { UpdateCustomerForProjectDto } from './dto/update-customer_for_project.dto';
 import { JwtAuthGuard } from '../auth/jwt_auth.guard';
+<<<<<<< HEAD
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequireAnyAction } from '../permission/permission.decorator';
+=======
+import { PermissionGuard } from 'src/permission/permission.guard';
+import { RequireAnyAction } from 'src/permission/permission.decorator';
+>>>>>>> fef258e11fb85526f63cfa733c58125e62453040
 
 @Controller('api/customer-for-project')
 export class CustomerForProjectController {

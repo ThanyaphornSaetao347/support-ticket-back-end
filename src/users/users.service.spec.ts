@@ -8,7 +8,14 @@ import { NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+<<<<<<< HEAD
 import { CreateUserAllowRoleDto } from '../user_allow_role/dto/create-user_allow_role.dto';
+=======
+<<<<<<< HEAD
+import { CreateUserAllowRoleDto } from 'src/user_allow_role/dto/create-user_allow_role.dto';
+=======
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
+>>>>>>> fef258e11fb85526f63cfa733c58125e62453040
 
 describe('UserService', () => {
   let service: UserService;
@@ -28,9 +35,12 @@ describe('UserService', () => {
   const mockUserAllowRoleRepository = {
     createQueryBuilder: jest.fn(),
     count: jest.fn(),
+<<<<<<< HEAD
     create: jest.fn(),      // เพิ่มบรรทัดนี้
     save: jest.fn(),        // เพิ่มบรรทัดนี้
     map: jest.fn(),         // เพิ่มบรรทัดนี้
+=======
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
   };
 
   const mockUser = {
@@ -101,6 +111,7 @@ describe('UserService', () => {
       update_by: 1,
     };
 
+<<<<<<< HEAD
     const createUserAllowRoleDto: CreateUserAllowRoleDto = {
       user_id: 1,         // ต้องใส่ user_id
       role_id: [1, 2, 3],    // ตามเดิม
@@ -127,15 +138,39 @@ describe('UserService', () => {
 
       expect(result.code).toBe('1');
       expect(result.message).toBe('บันทึกสำเร็จ');
+=======
+    it('should create user successfully', async () => {
+      mockUserRepository.findOne
+        .mockResolvedValueOnce(null) // username check
+        .mockResolvedValueOnce(null); // email check
+      mockUserRepository.create.mockReturnValue(mockUser);
+      mockUserRepository.save.mockResolvedValue(mockUser);
+
+      jest.spyOn(bcrypt, 'hash').mockResolvedValue('hashedPassword' as never);
+
+      const result = await service.create(createUserDto);
+
+      expect(result).toEqual({
+        code: '1',
+        message: 'บันทึกสำเร็จ',
+        data: mockUser,
+      });
+      expect(bcrypt.hash).toHaveBeenCalledWith('password123', 10);
+      expect(mockUserRepository.save).toHaveBeenCalled();
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
     });
 
     it('should return error if email is missing', async () => {
       const dtoWithoutEmail = { ...createUserDto, email: '' };
 
+<<<<<<< HEAD
       const result = await service.create(dtoWithoutEmail, {
         user_id: 0,
         role_id: [],
       });
+=======
+      const result = await service.create(dtoWithoutEmail);
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
 
       expect(result).toEqual({
         code: '3',
@@ -146,7 +181,11 @@ describe('UserService', () => {
     it('should return error if username already exists', async () => {
       mockUserRepository.findOne.mockResolvedValueOnce(mockUser);
 
+<<<<<<< HEAD
       const result = await service.create(createUserDto, createUserAllowRoleDto);
+=======
+      const result = await service.create(createUserDto);
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
 
       expect(result).toEqual({
         code: '2',
@@ -159,7 +198,11 @@ describe('UserService', () => {
         .mockResolvedValueOnce(null) // username check
         .mockResolvedValueOnce(mockUser); // email check
 
+<<<<<<< HEAD
       const result = await service.create(createUserDto, createUserAllowRoleDto);
+=======
+      const result = await service.create(createUserDto);
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
 
       expect(result).toEqual({
         code: '2',
@@ -176,7 +219,11 @@ describe('UserService', () => {
 
       jest.spyOn(bcrypt, 'hash').mockResolvedValue('hashedPassword' as never);
 
+<<<<<<< HEAD
       const result = await service.create(createUserDto, createUserAllowRoleDto);
+=======
+      const result = await service.create(createUserDto);
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
 
       expect(result).toEqual({
         code: '4',
@@ -186,7 +233,10 @@ describe('UserService', () => {
     });
   });
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
   describe('findByEmail', () => {
     it('should find user by email', async () => {
       mockUserRepository.findOne.mockResolvedValue(mockUser);
