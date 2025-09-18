@@ -538,13 +538,13 @@ describe('NotificationService', () => {
       };
       mockNotificationRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
 
-      const result = await service.deleteOldNotifications(90);
+      const result = await service.remove(90);
 
       expect(result).toEqual({ deleted: 10 });
     });
 
     it('should throw error for invalid days parameter', async () => {
-      await expect(service.deleteOldNotifications(0)).rejects.toThrow(
+      await expect(service.remove(0)).rejects.toThrow(
         'Days old must be greater than 0',
       );
     });

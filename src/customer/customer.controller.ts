@@ -5,15 +5,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 import { PermissionGuard } from '../permission/permission.guard';
-<<<<<<< HEAD
 import { RequireAnyAction } from '../permission/permission.decorator';
-=======
-<<<<<<< HEAD
-import { RequireAnyAction } from '../permission/permission.decorator';
-=======
-import { RequireAnyAction } from 'src/permission/permission.decorator';
->>>>>>> fef258e11fb85526f63cfa733c58125e62453040
->>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
 
 @Controller('api')
 export class CustomerController {
@@ -32,23 +24,6 @@ export class CustomerController {
     createCustomerDto.update_by = userId;
 
     return this.customerService.create(createCustomerDto, userId);
-<<<<<<< HEAD
-  }
-
-  @UseGuards(JwtAuthGuard, PermissionGuard)
-  @RequireAnyAction('manage_customer')
-  @Get('get_customer_data')
-  async getCustomerData() {
-    return this.customerService.getCustomer()
-=======
->>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
-  }
-
-  @UseGuards(JwtAuthGuard, PermissionGuard)
-  @RequireAnyAction('manage_customer')
-  @Get('get_customer_data')
-  async getCustomerData() {
-    return this.customerService.getCustomer()
   }
 
   @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -74,22 +49,10 @@ export class CustomerController {
     return this.customerService.findCustomersByUserId(userId);
   }
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> fef258e11fb85526f63cfa733c58125e62453040
->>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
   // ใน customer.controller.ts
   @Get('getOne/:id')
   findOne(@Param('id') rawId: string) {
     console.log('Customer Controller received ID:', rawId);
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
->>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
 
     const id = parseInt(rawId, 10);
 
@@ -100,33 +63,9 @@ export class CustomerController {
     return this.customerService.findOne(id);
   }
 
-<<<<<<< HEAD
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('manage_customer')
   @Patch('customer/update/:id')
-=======
-  @UseGuards(JwtAuthGuard)
-  @Patch('update/:id')
-=======
->>>>>>> fef258e11fb85526f63cfa733c58125e62453040
-
-    const id = parseInt(rawId, 10);
-
-    if (isNaN(id)) {
-      throw new BadRequestException(`Customer ID must be a valid number, received: "${rawId}"`);
-    }
-
-    return this.customerService.findOne(id);
-  }
-
-  @UseGuards(JwtAuthGuard)
-<<<<<<< HEAD
-  @Patch('update/:id')
-=======
-  @Patch(':id')
->>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
->>>>>>> fef258e11fb85526f63cfa733c58125e62453040
->>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
   update(
     @Param('id') id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
@@ -143,14 +82,9 @@ export class CustomerController {
     return this.customerService.update(+id, updateCustomerDto, userId);
   }
 
-<<<<<<< HEAD
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('manage_customer')
   @Delete('customer/delete/:id')
-=======
-  @UseGuards(JwtAuthGuard)
-  @Delete('delete/:id')
->>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
   remove(@Param('id') id: string) {
     return this.customerService.remove(+id);
   }

@@ -1,15 +1,10 @@
-<<<<<<< HEAD
 import { Controller, Post, Get, UseGuards, Request, Param, ParseIntPipe, Body, Delete, Patch } from '@nestjs/common';
-=======
-import { Controller, Post, Get, UseGuards, Request, Param, ParseIntPipe, Body, Req } from '@nestjs/common';
->>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
 import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 import { ProjectService } from './project.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequireAnyAction } from '../permission/permission.decorator';
-import { request } from 'http';
 
 @Controller('api')
 export class ProjectController {
@@ -52,12 +47,6 @@ export class ProjectController {
   }
 
   // เส้นดึง project พร้อมกับ status
-  @UseGuards(JwtAuthGuard)
-  @Get('get_all_project')
-  async getProjectAll() {
-    return await this.projectService.getProjects()
-  }
-
   @UseGuards(JwtAuthGuard)
   @Get('get_all_project')
   async getProjectAll() {

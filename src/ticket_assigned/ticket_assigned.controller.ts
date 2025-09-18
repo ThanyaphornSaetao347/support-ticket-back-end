@@ -34,10 +34,6 @@ export class TicketAssignedController {
     @Body('assignedTo') assignedTo: number,
     @Request() req: any
   ) {
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
     const assignedBy = req.user.id;
 
     return this.ticketAssignedService.assignTicketByTicketNo(
@@ -45,22 +41,5 @@ export class TicketAssignedController {
       assignedTo,
       assignedBy // ส่งแค่ userId ให้ service ดึง permissions เอง
     );
-<<<<<<< HEAD
-=======
-=======
-    return this.ticketAssignedService.assignTicketByTicketNo(
-      ticketNo,
-      assignedTo,
-      req.user.id
-    );
-  }
-
-  @Get('tickets/assign/users')
-  @UseGuards(JwtAuthGuard, PermissionGuard)
-  @RequireAction('assign_ticket')
-  async getAssignableUsers() {
-    return this.ticketAssignedService.getUserAssignTo();
->>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
->>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
   }
 }

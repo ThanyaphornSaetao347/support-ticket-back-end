@@ -3,10 +3,6 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
-<<<<<<< HEAD
-=======
-
->>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
