@@ -60,13 +60,6 @@ export class UserController {
     return this.userService.userAccount();
   }
 
-  @UseGuards(JwtAuthGuard, PermissionGuard)
-  @RequireAction('create_user')
-  @Get('account')
-  async getUserAccount() {
-    return this.userService.userAccount();
-  }
-
   @Get()
   @UseGuards(AuthGuard('jwt'))
   findAll(@Query('username') username?: string, @Query('email') email?: string) {

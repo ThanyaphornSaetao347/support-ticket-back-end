@@ -71,10 +71,6 @@ export class UserService {
       update_by: createUserDto.update_by,
     });
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
     try {
       // บันทึกข้อมูล User ก่อน
       const savedUser = await this.userRepository.save(user);
