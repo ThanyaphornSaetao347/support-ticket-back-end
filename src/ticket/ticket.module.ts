@@ -19,9 +19,28 @@ import { NotificationModule } from '../notification/notification.module';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 import { PermissionModule } from '../permission/permission.module';
 import { UserModule } from '../users/users.module';
+<<<<<<< HEAD
 import { UserAllowRoleModule } from '../user_allow_role/user_allow_role.module';
 import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
 import { TicketCategoriesModule } from '../ticket_categories/ticket_categories.module';
+=======
+<<<<<<< HEAD
+import { UserAllowRoleModule } from '../user_allow_role/user_allow_role.module';
+import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
+import { TicketCategoriesModule } from '../ticket_categories/ticket_categories.module';
+=======
+import { UserAllowRoleModule } from 'src/user_allow_role/user_allow_role.module';
+import { UserAllowRole } from 'src/user_allow_role/entities/user_allow_role.entity';
+<<<<<<< HEAD
+import { TicketCategoriesModule } from 'src/ticket_categories/ticket_categories.module';
+=======
+<<<<<<< HEAD
+import { TicketCategoriesModule } from 'src/ticket_categories/ticket_categories.module';
+=======
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
+>>>>>>> fef258e11fb85526f63cfa733c58125e62453040
+>>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
 
 @Module({
   imports: [
@@ -44,7 +63,14 @@ import { TicketCategoriesModule } from '../ticket_categories/ticket_categories.m
     PermissionModule,
     UserModule,
     UserAllowRoleModule,
+<<<<<<< HEAD
     TicketCategoriesModule,
+=======
+<<<<<<< HEAD
+    TicketCategoriesModule,
+=======
+>>>>>>> c800e6ccbbccb4c37b12cb33ae2e84d31ad3f529
+>>>>>>> 44b5f76e0a11799c862a981775c1a3a71ac974a4
   ],
   controllers: [TicketController, TicketAttachmentController],
   providers: [

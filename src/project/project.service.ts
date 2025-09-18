@@ -115,9 +115,21 @@ export class ProjectService {
   async getProjects() {
     try {
       const result = await this.projectRepository.query(`
+<<<<<<< HEAD
         SELECT id, name, status
         FROM project
         WHERE isenabled = TRUE
+=======
+<<<<<<< HEAD
+        SELECT id, name, status
+        FROM project
+        WHERE isenabled = TRUE
+=======
+          SELECT id, name
+          FROM project
+          WHERE isenabled = TRUE
+>>>>>>> fef258e11fb85526f63cfa733c58125e62453040
+>>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
       `);
 
       if (!result || result.length === 0) {

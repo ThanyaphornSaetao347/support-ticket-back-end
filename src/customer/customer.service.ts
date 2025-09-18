@@ -38,6 +38,7 @@ export class CustomerService {
       const result = await this.customerRepository
         .createQueryBuilder('c')
         .select([
+<<<<<<< HEAD
           'c.id',
           'c.name',
           'c.address',
@@ -46,6 +47,18 @@ export class CustomerService {
           'c.status'
         ])
         .where('isenabled = true')
+=======
+          'c.name',
+          'c.address',
+          'c.email',
+<<<<<<< HEAD
+          'c.telephone',
+          'c.status'
+=======
+          'c.telephone'
+>>>>>>> fef258e11fb85526f63cfa733c58125e62453040
+        ])
+>>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
         .getMany();
 
       return {
@@ -129,6 +142,7 @@ export class CustomerService {
       };
     }
 
+<<<<<<< HEAD
     // อัพเดต fields ทีละตัว
     const fieldsToUpdate: Partial<Customer> = {};
     if (updateCustomerDto.name) fieldsToUpdate.name = updateCustomerDto.name;
@@ -136,6 +150,16 @@ export class CustomerService {
     if (updateCustomerDto.telephone) fieldsToUpdate.telephone = updateCustomerDto.telephone;
     if (updateCustomerDto.email) fieldsToUpdate.email = updateCustomerDto.email;
     if (updateCustomerDto.status != undefined) fieldsToUpdate.status = updateCustomerDto.status;
+=======
+    // อัพเดตข้อมูล
+    if (updateCustomerDto.name) customer.name = updateCustomerDto.name;
+    if (updateCustomerDto.address) customer.address = updateCustomerDto.address;
+    if (updateCustomerDto.telephone) customer.telephone = updateCustomerDto.telephone;
+    if (updateCustomerDto.email) customer.email = updateCustomerDto.email;
+
+    customer.update_date = new Date();
+    customer.update_by = userId;
+>>>>>>> cea3524b1f3c03397e21b1d2703b94b86d58787a
 
     // set update info
     fieldsToUpdate.update_by = userId;
