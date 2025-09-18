@@ -60,6 +60,7 @@ describe('CustomerService', () => {
       address: '456 New Street',
       telephone: '0987654321',
       email: 'new@example.com',
+      status: true,
       create_by: 1,
       update_by: 1,
     };
@@ -382,6 +383,7 @@ describe('CustomerService', () => {
         address: 'Test Address',
         telephone: '123456789',
         email: 'test@example.com',
+        status: false,
         create_by: 1,
         update_by: 1,
       };

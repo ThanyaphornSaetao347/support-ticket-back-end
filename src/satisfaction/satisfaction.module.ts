@@ -3,7 +3,7 @@ import { SatisfactionService } from './satisfaction.service';
 import { SatisfactionController } from './satisfaction.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Satisfaction } from './entities/satisfaction.entity';
-import { Ticket } from 'src/ticket/entities/ticket.entity';
+import { Ticket } from '../ticket/entities/ticket.entity';
 
 @Module({
   imports: [

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Get, Param, Put, Delete, Query, UseGuards, Req, ForbiddenException } from '@nestjs/common';
+import { Body, Controller, Post, Get, Param, Put, Delete, Query, UseGuards, Req, ForbiddenException, Patch } from '@nestjs/common';
 import { UserService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -72,7 +72,7 @@ export class UserController {
     return this.userService.findOne(+id);
   }
 
-  @Put(':id')
+  @Patch('update/:id')
   @UseGuards(AuthGuard('jwt'))
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Req() req: Request) {
 
@@ -83,7 +83,7 @@ export class UserController {
     return this.userService.update(+id, updateUserDto);
   }
 
-  @Delete(':id')
+  @Delete('delete/:id')
   @UseGuards(AuthGuard('jwt'))
   remove(@Param('id') id: string) {
     return this.userService.remove(+id);

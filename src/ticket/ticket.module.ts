@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TicketService } from './ticket.service';
 import { TicketController } from './ticket.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -19,9 +19,9 @@ import { NotificationModule } from '../notification/notification.module';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 import { PermissionModule } from '../permission/permission.module';
 import { UserModule } from '../users/users.module';
-import { UserAllowRoleModule } from 'src/user_allow_role/user_allow_role.module';
-import { UserAllowRole } from 'src/user_allow_role/entities/user_allow_role.entity';
-import { TicketCategoriesModule } from 'src/ticket_categories/ticket_categories.module';
+import { UserAllowRoleModule } from '../user_allow_role/user_allow_role.module';
+import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
+import { TicketCategoriesModule } from '../ticket_categories/ticket_categories.module';
 
 @Module({
   imports: [
@@ -37,6 +37,7 @@ import { TicketCategoriesModule } from 'src/ticket_categories/ticket_categories.
       TicketAssigned,
       UserAllowRole,
     ]),
+    forwardRef(() => NotificationModule),
     TicketStatusHistoryModule,
     TicketStatusModule,
     NotificationModule,

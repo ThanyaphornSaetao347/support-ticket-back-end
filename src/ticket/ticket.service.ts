@@ -1,8 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Brackets, Repository, MoreThan, FindManyOptions } from 'typeorm';
+import { DataSource,Repository } from 'typeorm';
 import { Ticket } from './entities/ticket.entity';
-import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketStatusHistory } from '../ticket_status_history/entities/ticket_status_history.entity';
 import { TicketAttachment } from '../ticket_attachment/entities/ticket_attachment.entity';
@@ -10,24 +9,14 @@ import { TicketCategory } from '../ticket_categories/entities/ticket_category.en
 import { AttachmentService } from '../ticket_attachment/ticket_attachment.service';
 import { TicketStatus } from '../ticket_status/entities/ticket_status.entity';
 import { TicketStatusHistoryService } from '../ticket_status_history/ticket_status_history.service';
-import { TicketStatusLanguage } from '../ticket_status_language/entities/ticket_status_language.entity';
-import { CreateTicketStatusDto } from '../ticket_status/dto/create-ticket_status.dto';
 import { CreateSatisfactionDto } from '../satisfaction/dto/create-satisfaction.dto';
 import { Satisfaction } from '../satisfaction/entities/satisfaction.entity';
 import { NotificationService } from '../notification/notification.service';
-import { privateDecrypt } from 'crypto';
-import { NotificationType } from '../notification/entities/notification.entity';
 import { Users } from '../users/entities/user.entity';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 import { Project } from '../project/entities/project.entity';
 import { PermissionService } from '../permission/permission.service';
-import {
-  DashboardResponseDTO,
-  DashboardStatsDTO,
-  MonthlyTicketStatsDTO,
-  CategoryStatsDTO,
-  DashboardResponse,
-} from './dto/dashboard.dto';
+import { CategoryStatsDTO } from './dto/dashboard.dto';
 
 @Injectable()
 export class TicketService {
@@ -57,147 +46,7 @@ export class TicketService {
     private readonly notiService: NotificationService,
     private readonly permissionService: PermissionService,
   ) { }
-
-  // async getDashboardStats(
-  //   year?: number,
-  //   month?: number,
-  //   userId?: number
-  // ): Promise<DashboardResponse> {
-  //   const currentYear = year || new Date().getFullYear();
-  //   const currentMonth = month || new Date().getMonth() + 1;
-
-  //   // 1. ดึงสถิติรวม
-  //   const stats = await this.getTicketStats(currentYear, currentMonth, userId);
-
-  //   // 2. ดึงข้อมูลรายเดือน (12 เดือนย้อนหลัง)
-  //   const monthlyTrend = await this.getMonthlyTrend(currentYear, userId);
-
-  //   // 3. ดึงข้อมูลตาม Category
-  //   const categoryBreakdown = await this.getCategoryBreakdown(currentYear, currentMonth, userId);
-
-  //   // 4. ดึงข้อมูล Tickets by Category สำหรับ donut chart
-  //   const ticketsByCategory = await this.getTicketsByCategory(currentYear, currentMonth, userId);
-
-  //   const responseData: DashboardResponseDTO = {
-  //     stats,
-  //     monthlyTrend,
-  //     categoryBreakdown,
-  //     ticketsByCategory
-  //   };
-
-  //   return new DashboardResponse(responseData);
-  // }
-
-  // async getTicketStats(
-  //   year: number, 
-  //   month: number, 
-  //   userId?: number
-  // ): Promise<DashboardStatsDTO> {
-  //   const startDate = new Date(year, month - 1, 1);
-  //   const endDate = new Date(year, month, 0);
-
-  //   let baseQuery = this.ticketRepo
-  //     .createQueryBuilder('t')
-  //     .where('t.create_date BETWEEN :startDate AND :endDate', {
-  //       startDate,
-  //       endDate: new Date(endDate.getTime() + 24 * 60 * 60 * 1000 - 1) // end of day
-  //     });
-
-  //   if (userId) {
-  //     baseQuery = baseQuery
-  //       .innerJoin('ticket_assigned', 'ta', 'ta.ticket_id = t.id')
-  //       .andWhere('ta.user_id = :userId', { userId });
-  //   }
-
-  //   // Total Tickets
-  //   const totalTickets = await baseQuery.getCount();
-
-  //   // New Tickets (status = 1 หรือ 'New')
-  //   const newTickets = await baseQuery
-  //     .clone()
-  //     .andWhere('t.status_id = :statusId', { statusId: 1 })
-  //     .getCount();
-
-  //   // In Progress Tickets (status = 2 หรือ 'In Progress')
-  //   const inProgressTickets = await baseQuery
-  //     .clone()
-  //     .andWhere('t.status_id = :statusId', { statusId: 2 })
-  //     .getCount();
-
-  //   // Complete Tickets (status = 3 หรือ 'Complete')
-  //   const completeTickets = await baseQuery
-  //     .clone()
-  //     .andWhere('t.status_id = :statusId', { statusId: 3 })
-  //     .getCount();
-
-  //   return {
-  //     totalTickets,
-  //     newTickets,
-  //     inProgressTickets,
-  //     completeTickets
-  //   };
-  // }
-
-  // async getMonthlyTrend(
-  //   year: number, 
-  //   userId?: number
-  // ): Promise<MonthlyTicketStatsDTO[]> {
-  //   const months: Date[] = [];
-  //   const currentDate = new Date();
-
-  //   // สร้าง 12 เดือนย้อนหลัง
-  //   for (let i = 11; i >= 0; i--) {
-  //     const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
-  //     months.push(date);
-  //   }
-
-  //   const monthlyStats = await Promise.all(
-  //     months.map(async (monthDate: Date) => {
-  //       const startDate = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-  //       const endDate = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
-
-  //       let baseQuery = this.ticketRepo
-  //         .createQueryBuilder('t')
-  //         .where('t.create_date BETWEEN :startDate AND :endDate', {
-  //           startDate,
-  //           endDate: new Date(endDate.getTime() + 24 * 60 * 60 * 1000 - 1)
-  //         });
-
-  //       if (userId) {
-  //         baseQuery = baseQuery
-  //           .innerJoin('ticket_assigned', 'ta', 'ta.ticket_id = t.id')
-  //           .andWhere('ta.user_id = :userId', { userId });
-  //       }
-
-  //       const total = await baseQuery.getCount();
-
-  //       const newTickets = await baseQuery
-  //         .clone()
-  //         .andWhere('t.status_id = :statusId', { statusId: 1 })
-  //         .getCount();
-
-  //       const complete = await baseQuery
-  //         .clone()
-  //         .andWhere('t.status_id = :statusId', { statusId: 3 })
-  //         .getCount();
-
-  //       const monthName = monthDate.toLocaleDateString('th-TH', { 
-  //         year: 'numeric', 
-  //         month: 'short' 
-  //       });
-
-  //       return {
-  //         month: monthName,
-  //         newTickets,
-  //         complete,
-  //         total
-  //       };
-  //     })
-  //   );
-
-  //   return monthlyStats;
-  // }
-
+  
   async getCategoryBreakdown(
     year: number,
     userId?: number

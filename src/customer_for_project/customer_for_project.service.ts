@@ -17,10 +17,10 @@ export class CustomerForProjectService {
     private projectRepository: Repository<Project>,
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>
-  ) {}
+  ) { }
 
   async create(createDto: CreateCustomerForProjectDto) {
-  // 1. ตรวจสอบข้อมูลที่จำเป็นก่อน
+    // 1. ตรวจสอบข้อมูลที่จำเป็นก่อน
     if (!createDto.project_id) {
       return {
         code: '0',
@@ -110,12 +110,80 @@ export class CustomerForProjectService {
     };
   }
 
+  async getCFPdata() {
+    const result = await this.customerForProjectRepository
+      .createQueryBuilder('cfp')
+      .leftJoin('customer', 'c', 'c.id = cfp.customer_id')
+      .leftJoin('project', 'p', 'p.id = cfp.project_id')
+      .leftJoin('users_allow_role', 'uar', 'uar.user_id = cfp.user_id')
+      .leftJoin('users', 'u', 'u.id = uar.user_id')
+      .leftJoin(
+        'ticket',
+        't',
+        't.project_id = p.id AND t.status_id = :openStatusId'
+      )
+      .select([
+        'c.id as customer_id',
+        'c.name as customer_name',
+        'c.email as customer_email',
+        'c.telephone as customer_phone',
+        'p.id as project_id',
+        'p.name as project_name',
+        'p.status as project_status',
+        'COUNT(DISTINCT cfp.project_id) as project_count',
+        'COUNT(DISTINCT cfp.user_id) as user_count',
+        'COUNT(DISTINCT t.id) as open_ticket_count',
+        "ARRAY_AGG(DISTINCT u.firstname || ' ' || u.lastname) as assigned_users",
+      ])
+      .where('cfp.isenabled = :enabled', { enabled: true })
+      .setParameter('openStatusId', 2)
+      .groupBy(
+        'c.id, c.name, c.email, c.telephone, p.id, p.name, p.status'
+      )
+      .getRawMany();
+
+    // 👉 Group ตาม customer_id
+    const customersMap = new Map<number, any>();
+
+    result.forEach((row) => {
+      const customerId = row.customer_id;
+
+      if (!customersMap.has(customerId)) {
+        customersMap.set(customerId, {
+          customer_id: row.customer_id,
+          customer_name: row.customer_name,
+          customer_email: row.customer_email,
+          customer_phone: row.customer_phone,
+          projects: [], // รวม projects ไว้ตรงนี้
+        });
+      }
+
+      const customer = customersMap.get(customerId);
+
+      customer.projects.push({
+        project_id: row.project_id,
+        project_name: row.project_name,
+        project_status: row.project_status,
+        assigned_users: row.assigned_users || [],
+        project_count: parseInt(row.project_count) || 0,
+        user_count: parseInt(row.user_count) || 0,
+        open_ticket_count: parseInt(row.open_ticket_count) || 0,
+      });
+    });
+
+    return {
+      status: 1,
+      message: 'Success',
+      data: Array.from(customersMap.values()),
+    };
+  }
+
   async findAll() {
     const records = await this.customerForProjectRepository.find({
       where: { isenabled: true },
       relations: ['users', 'project', 'customer']
     });
-    
+
     return {
       code: '2',
       status: true,
@@ -172,7 +240,7 @@ export class CustomerForProjectService {
       where: { id, isenabled: true },
       relations: ['users', 'project', 'customer']
     });
-    
+
     if (!record) {
       return {
         status: 0,
@@ -180,7 +248,7 @@ export class CustomerForProjectService {
         data: null
       };
     }
-    
+
     return {
       status: 1,
       message: 'Success',
@@ -190,60 +258,65 @@ export class CustomerForProjectService {
 
   async update(id: number, updateDto: UpdateCustomerForProjectDto, userId: number) {
     const record = await this.customerForProjectRepository.findOneBy({ id, isenabled: true });
-    
+
     if (!record) {
       return {
         status: 0,
         message: 'ไม่พบข้อมูล',
-        data: null
+        data: null,
       };
     }
-    
-    // ตรวจสอบการแก้ไขข้อมูล project และ customer ถ้ามีการส่งมา
-    if (updateDto.project_id) {
+
+    // ตรวจสอบความถูกต้องของ project_id ถ้ามี
+    if (updateDto.project_id !== undefined) {
       const project = await this.projectRepository.findOneBy({ id: updateDto.project_id });
       if (!project) {
         return {
           status: 0,
           message: 'ไม่พบข้อมูลโปรเจค',
-          data: null
+          data: null,
         };
       }
       record.projectId = updateDto.project_id;
     }
-    
-    if (updateDto.customer_id) {
+
+    // ตรวจสอบความถูกต้องของ customer_id ถ้ามี
+    if (updateDto.customer_id !== undefined) {
       const customer = await this.customerRepository.findOneBy({ id: updateDto.customer_id });
       if (!customer) {
         return {
           status: 0,
           message: 'ไม่พบข้อมูลลูกค้า',
-          data: null
+          data: null,
         };
       }
       record.customerId = updateDto.customer_id;
     }
-    
-    // เพิ่มการอัพเดท userId ตรงนี้
-    if (updateDto.user_id !== undefined) {
-      record.userId = updateDto.user_id; // เพิ่มบรรทัดนี้
-      record.update_by = updateDto.user_id;
-    }
-    
+
+    // อัพเดตฟิลด์อื่น ๆ แบบ dynamic
+    const allowedFields: (keyof UpdateCustomerForProjectDto)[] = ['user_id', 'customer_id', 'project_id']; // เพิ่มฟิลด์อื่น ๆ ตาม DTO
+    allowedFields.forEach(field => {
+      if (updateDto[field] !== undefined && !['project_id', 'customer_id'].includes(field)) {
+        (record as any)[field] = updateDto[field];
+      }
+    });
+
+    // อัพเดต update_by และ update_date
+    record.update_by = userId;
     record.update_date = new Date();
-    
+
     await this.customerForProjectRepository.save(record);
-    
+
     return {
       status: 1,
       message: 'อัพเดทข้อมูลสำเร็จ',
-      data: record
+      data: record,
     };
   }
 
   async remove(id: number) {
     const record = await this.customerForProjectRepository.findOneBy({ id, isenabled: true });
-    
+
     if (!record) {
       return {
         status: 0,
@@ -251,11 +324,11 @@ export class CustomerForProjectService {
         data: null
       };
     }
-    
+
     // Soft delete โดยเปลี่ยนค่า isenabled เป็น false
     record.isenabled = false;
     await this.customerForProjectRepository.save(record);
-    
+
     return {
       status: 1,
       message: 'ลบข้อมูลสำเร็จ',
@@ -266,7 +339,7 @@ export class CustomerForProjectService {
   // เพิ่มเมธอดนี้ใน CustomerForProjectService
   async changeUserAssignment(id: number, newUserId: number, currentUserId: number) {
     const record = await this.customerForProjectRepository.findOneBy({ id, isenabled: true });
-    
+
     if (!record) {
       return {
         status: 0,
@@ -274,14 +347,14 @@ export class CustomerForProjectService {
         data: null
       };
     }
-    
+
     // อัพเดทข้อมูล user_id
     record.userId = newUserId;
     record.update_date = new Date();
     record.update_by = currentUserId;
-    
+
     await this.customerForProjectRepository.save(record);
-    
+
     return {
       status: 1,
       message: 'เปลี่ยนผู้รับผิดชอบสำเร็จ',
@@ -289,7 +362,7 @@ export class CustomerForProjectService {
     };
   }
 
-   // เพิ่มเมธอดใหม่สำหรับดึงข้อมูลลูกค้าตามโปรเจค
+  // เพิ่มเมธอดใหม่สำหรับดึงข้อมูลลูกค้าตามโปรเจค
   async getCustomersByProject(projectId: number) {
     const records = await this.customerForProjectRepository.find({
       where: { projectId: projectId, isenabled: true },
@@ -334,16 +407,25 @@ export class CustomerForProjectService {
       };
     }
 
+    // กรองโปรเจคที่ซ้ำกัน
+    const uniqueProjects = new Map();
+
+    records.forEach(record => {
+      if (!uniqueProjects.has(record.project.id)) {
+        uniqueProjects.set(record.project.id, {
+          id: record.id, // เอา id ของ record แรกที่เจอ
+          project: {
+            id: record.project.id,
+            name: record.project.name
+          }
+        });
+      }
+    });
+
     return {
       status: 1,
       message: 'Success',
-      data: records.map(record => ({
-        id: record.id,
-        project: {
-          id: record.project.id,
-          name: record.project.name
-        }
-      }))
+      data: Array.from(uniqueProjects.values())
     };
   }
 
@@ -388,7 +470,7 @@ export class CustomerForProjectService {
   async getCustomerProjectsByUser(userId: number) {
     const records = await this.customerForProjectRepository.find({
       where: { userId: userId, isenabled: true },
-      relations: ['customer','project']
+      relations: ['customer', 'project']
     });
 
     if (records.length === 0) {
@@ -400,9 +482,9 @@ export class CustomerForProjectService {
       };
     }
 
-     // จัดกลุ่มข้อมูลตามลูกค้า
+    // จัดกลุ่มข้อมูลตามลูกค้า
     const customerMap = new Map();
-    
+
     records.forEach(record => {
       if (!customerMap.has(record.customer.id)) {
         customerMap.set(record.customer.id, {
@@ -411,7 +493,7 @@ export class CustomerForProjectService {
           projects: []
         });
       }
-      
+
       customerMap.get(record.customer.id).projects.push({
         id: record.project.id,
         name: record.project.name,

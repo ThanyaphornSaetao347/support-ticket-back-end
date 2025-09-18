@@ -5,7 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { UserAllowRole } from './entities/user_allow_role.entity';
 import { Repository, In } from 'typeorm';
 import { MasterRole } from '../master_role/entities/master_role.entity';
-import { Users } from 'src/users/entities/user.entity';
+import { Users } from '../users/entities/user.entity';
 
 @Injectable()
 export class UserAllowRoleService {

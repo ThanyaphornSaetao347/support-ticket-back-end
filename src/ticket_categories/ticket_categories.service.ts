@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { TicketCategory } from './entities/ticket_category.entity';
 import { TicketCategoryLanguage } from '../ticket_categories_language/entities/ticket_categories_language.entity';
 import { CreateCategoryDto } from './dto/create-ticket_category.dto';
+import { UpdateTicketCategoriesLanguageDto } from '../ticket_categories_language/dto/update-ticket_categories_language.dto';
 
 @Injectable()
 export class TicketCategoryService {
@@ -12,7 +13,9 @@ export class TicketCategoryService {
     private readonly categoryRepo: Repository<TicketCategory>,
 
     @InjectRepository(TicketCategoryLanguage)
-    private readonly categoryLangRepo: Repository<TicketCategoryLanguage>
+    private readonly categoryLangRepo: Repository<TicketCategoryLanguage>,
+
+    private readonly dataSource: DataSource,
   ) { }
 
   async getCategoriesDDL(languageId?: string) {
@@ -67,8 +70,19 @@ export class TicketCategoryService {
 
   async createCategory(createCategoryDto: CreateCategoryDto) {
     try {
+      console.log('=== Starting createCategory ===');
+      console.log('Input data:', createCategoryDto);
+
+      console.log('CategoryLangRepo metadata:', this.categoryLangRepo.metadata.tableName);
+      console.log('CategoryLangRepo target:', this.categoryLangRepo.target);
+
       // ตรวจสอบความซ้ำซ้อนของชื่อ category ในแต่ละภาษา
-      for (const lang of createCategoryDto.languages) {
+      console.log('Starting validation...');
+
+      for (let i = 0; i < createCategoryDto.languages.length; i++) {
+        const lang = createCategoryDto.languages[i];
+        console.log(`Checking language ${i + 1}:`, lang);
+
         const existingCategory = await this.categoryLangRepo
           .createQueryBuilder('tcl')
           .innerJoin('tcl.category', 'tc')
@@ -77,7 +91,10 @@ export class TicketCategoryService {
           .andWhere('tc.isenabled = :enabled', { enabled: true })
           .getOne();
 
+        console.log(`Existing category check ${i + 1}:`, existingCategory);
+
         if (existingCategory) {
+          console.log('Found existing category, returning error');
           return {
             code: 0,
             message: `Category name "${lang.name}" already exists for language "${lang.language_id}"`,
@@ -91,10 +108,18 @@ export class TicketCategoryService {
           };
         }
       }
-      // ตรวจสอบซ้ำในชุดข้อมูลที่ส่งมา (ป้องกันการส่งภาษาเดียวกันซ้ำ)
+
+      console.log('No existing categories found, continuing...');
+
+      // ตรวจสอบซ้ำในชุดข้อมูลที่ส่งมา
+      console.log('Checking duplicate language_ids...');
       const languageIds = createCategoryDto.languages.map(lang => lang.language_id);
       const uniqueLanguageIds = [...new Set(languageIds)];
+      console.log('Language IDs:', languageIds);
+      console.log('Unique Language IDs:', uniqueLanguageIds);
+
       if (languageIds.length !== uniqueLanguageIds.length) {
+        console.log('Found duplicate language_ids');
         return {
           code: 0,
           message: 'Duplicate language_id found in the request',
@@ -102,36 +127,66 @@ export class TicketCategoryService {
       }
 
       // ตรวจสอบชื่อซ้ำในชุดข้อมูลเดียวกัน
+      console.log('Checking duplicate names...');
       const names = createCategoryDto.languages.map(lang =>
         `${lang.language_id}:${lang.name.toLowerCase().trim()}`
       );
       const uniqueNames = [...new Set(names)];
+      console.log('Names:', names);
+      console.log('Unique Names:', uniqueNames);
+
       if (names.length !== uniqueNames.length) {
+        console.log('Found duplicate names');
         return {
           code: 0,
           message: 'Duplicate category name found in the same language within the request',
         };
       }
 
+      console.log('All validations passed, creating category...');
+
       // สร้าง category หลัก
+      console.log('Creating main category...');
       const category = this.categoryRepo.create({
         create_by: createCategoryDto.create_by,
         create_date: new Date(),
         isenabled: true,
       });
+
+      console.log('Category object created:', category);
+
       const savedCategory = await this.categoryRepo.save(category);
+      console.log('Saved main category:', savedCategory);
 
-      // สร้าง language records สำหรับแต่ละภาษา
-      const languagePromises = createCategoryDto.languages.map(async (lang) => {
-        const categoryLang = this.categoryLangRepo.create({
-          id: savedCategory.id,
-          language_id: lang.language_id.trim(),
-          name: lang.name.trim(),
-        });
-        return await this.categoryLangRepo.save(categoryLang);
-      });
+      // สร้าง language records
+      console.log('Creating language records...');
+      const savedLanguages: TicketCategoryLanguage[] = [];
 
-      const savedLanguages = await Promise.all(languagePromises);
+      for (let i = 0; i < createCategoryDto.languages.length; i++) {
+        const lang = createCategoryDto.languages[i];
+        console.log(`Processing language ${i + 1}:`, lang);
+
+        try {
+          const categoryLang = this.categoryLangRepo.create({
+            category_id: savedCategory.id,
+            language_id: lang.language_id.trim(),
+            name: lang.name.trim(),
+          });
+
+          console.log(`Created categoryLang object ${i + 1}:`, categoryLang);
+
+          const savedLang = await this.categoryLangRepo.save(categoryLang);
+          console.log(`Saved language record ${i + 1}:`, savedLang);
+
+          savedLanguages.push(savedLang);
+
+        } catch (langError) {
+          console.error(`Error processing language ${i + 1}:`, langError);
+          throw langError;
+        }
+      }
+
+      console.log('All language records processed:', savedLanguages);
 
       return {
         code: 1,
@@ -145,10 +200,16 @@ export class TicketCategoryService {
             id: lang.id,
             language_id: lang.language_id,
             name: lang.name,
+            category_id: lang.category_id,
           })),
         },
       };
+
     } catch (error) {
+      console.error('=== Error in createCategory ===');
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+
       return {
         code: 0,
         message: 'Failed to create category',
@@ -157,51 +218,52 @@ export class TicketCategoryService {
     }
   }
 
-  // Method สำหรับ backward compatibility (ถ้าจำเป็น)
-  async createCategoryOld(body: {
-    isenabled: boolean;
-    create_by: number;
-    language_id: string;
-    name: string;
-  }) {
-    // ticketcategories table
-    const category = this.categoryRepo.create({
-      isenabled: body.isenabled,
-      create_by: body.create_by,
-      create_date: new Date(),
-    });
-    const savedCategory = await this.categoryRepo.save(category);
-
-    // language table
-    const categoryLang = this.categoryLangRepo.create({
-      id: savedCategory.id,
-      language_id: body.language_id,
-      name: body.name,
-    });
-    await this.categoryLangRepo.save(categoryLang);
-
-    return {
-      code: 1,
-      message: 'Category created successfully',
-      data: {
-        id: savedCategory.id,
-        name: categoryLang.name,
-      },
-    };
-  }
-
   async findAll() {
-    const categories = await this.categoryRepo.find({
-      relations: ['languages'],
-      where: { isenabled: true },
+    const rows = await this.categoryRepo
+      .createQueryBuilder('tc')
+      .leftJoin('ticket_categories_language', 'tcl', 'tcl.category_id = tc.id')
+      .leftJoin('ticket', 't', 't.categories_id = tc.id')
+      .where('tc.isenabled = :isenabled', { isenabled: true })
+      .andWhere('tcl.name is not null')
+      .select([
+        'tc.id AS category_id',
+        'tc.isenabled AS isenabled',
+        'tcl.language_id AS language_id',
+        'tcl.name AS language_name',
+        'COUNT(t.id) AS usage_count',
+      ])
+      .groupBy('tc.id')
+      .addGroupBy('tcl.language_id')
+      .addGroupBy('tcl.name')
+
+      .getRawMany();
+
+    // รวม languages เป็น array
+    const categoriesMap = new Map<number, any>();
+    rows.forEach(row => {
+      if (!categoriesMap.has(row.category_id)) {
+        categoriesMap.set(row.category_id, {
+          category_id: row.category_id,
+          isenabled: row.isenabled,
+          usage_count: parseInt(row.usage_count, 10) || 0,
+          languages: [],
+        });
+      }
+      if (row.language_id) {
+        categoriesMap.get(row.category_id).languages.push({
+          language_id: row.language_id,
+          language_name: row.language_name,
+        });
+      }
     });
 
     return {
       code: 1,
       message: 'Success',
-      data: categories,
+      data: Array.from(categoriesMap.values()),
     };
   }
+
 
   async findOne(id: number) {
     const category = await this.categoryRepo.findOne({
@@ -302,6 +364,87 @@ export class TicketCategoryService {
         message: 'Failed to retrieve debug data',
         error: error.message,
       };
+    }
+  }
+
+  async updateCategory(id: number, updateDto: any) {
+    const category = await this.categoryRepo.findOneBy({ id });
+    if (!category) {
+      return { code: 0, status: false, message: 'ไม่พบหมวดหมู่', data: null };
+    }
+
+    try {
+      await this.categoryRepo.save(category);
+
+      // ✅ อัพเดตหลายภาษา
+      if (updateDto.languages && Array.isArray(updateDto.languages)) {
+        for (const lang of updateDto.languages) {
+          let langRecord = await this.categoryLangRepo.findOneBy({
+            category_id: id,
+            language_id: lang.language_id,
+          });
+
+          if (langRecord) {
+            langRecord.name = lang.name;
+            await this.categoryLangRepo.save(langRecord);
+          } else {
+            await this.categoryLangRepo.save({
+              category_id: id,
+              language_id: lang.language_id,
+              name: lang.name,
+            });
+          }
+        }
+      }
+
+      // ✅ อัพเดตภาษาเดียว
+      else if (updateDto.language_id && updateDto.name) {
+        let langRecord = await this.categoryLangRepo.findOneBy({
+          category_id: id,
+          language_id: updateDto.language_id,
+        });
+
+        if (langRecord) {
+          langRecord.name = updateDto.name;
+          await this.categoryLangRepo.save(langRecord);
+        } else {
+          await this.categoryLangRepo.save({
+            category_id: id,
+            language_id: updateDto.language_id,
+            name: updateDto.name,
+          });
+        }
+      }
+
+      return { code: 1, status: true, message: 'อัพเดตหมวดหมู่สำเร็จ', data: category };
+    } catch (error) {
+      console.error('Error updating category:', error);
+      return { code: 0, status: false, message: 'เกิดข้อผิดพลาดในการอัพเดตหมวดหมู่', data: null };
+    }
+  }
+
+  async deleteCategories(category_id: number) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // ลบ ticket_categories_language ก่อน
+      await queryRunner.manager.delete(TicketCategoryLanguage, { category_id });
+
+      // ลบ ticket_categories
+      const result = await queryRunner.manager.delete(TicketCategory, { id: category_id });
+      if (result.affected === 0) throw new Error('ไม่พบหมวดหมู่');
+
+      await queryRunner.commitTransaction();
+
+      return { code: 1, status: true, message: 'ลบหมวดหมู่สำเร็จ' };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error('Error deleting category:', error);
+      return { code: 0, status: false, message: 'เกิดข้อผิดพลาดในการลบหมวดหมู่' };
+    } finally {
+      await queryRunner.release();
     }
   }
 }

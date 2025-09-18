@@ -1,5 +1,3 @@
-
-// ../../ticket-categories-language/entities/ticket-categories-language.entity.ts
 import { TicketCategory } from '../../ticket_categories/entities/ticket_category.entity';
 import {
   Entity,
@@ -11,7 +9,7 @@ import {
 
 @Entity('ticket_categories_language')
 export class TicketCategoryLanguage {  
-  @Column({ primary: true })
+  @PrimaryGeneratedColumn()
   id: number;
 
   @Column({ primary: true })

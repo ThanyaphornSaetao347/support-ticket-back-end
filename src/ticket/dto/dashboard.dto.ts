@@ -1,4 +1,3 @@
-// src/ticket/dto/dashboard.dto.ts
 export interface DashboardStatsDTO {
   totalTickets: number;
   newTickets: number;

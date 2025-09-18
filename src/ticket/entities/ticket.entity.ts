@@ -1,4 +1,3 @@
-// src/entities/ticket.entity.ts
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToOne } from 'typeorm';
 import { TicketAttachment } from '../../ticket_attachment/entities/ticket_attachment.entity';
 import { TicketStatusHistory } from '../../ticket_status_history/entities/ticket_status_history.entity';
@@ -6,6 +5,7 @@ import { TicketCategory } from '../../ticket_categories/entities/ticket_category
 import { Project } from '../../project/entities/project.entity';
 import { TicketStatus } from '../../ticket_status/entities/ticket_status.entity';
 import { Satisfaction } from '../../satisfaction/entities/satisfaction.entity';
+import { Users } from '../../users/entities/user.entity';
 
 @Entity('ticket')
 export class Ticket {
@@ -87,4 +87,8 @@ export class Ticket {
   @ManyToOne(() => TicketStatus, status => status.ticket)
   @JoinColumn({ name: 'status_id'})
   status: TicketStatus;
+
+  @ManyToOne(() => Users)
+  @JoinColumn({ name: 'create_by'})
+  user: Users;
 }

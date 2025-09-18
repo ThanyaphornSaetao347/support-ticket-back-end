@@ -11,7 +11,7 @@ export class CustomerService {
   constructor(
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
-  ) {}
+  ) { }
 
   async create(createCustomerDto: CreateCustomerDto, userId: number) {
     const customer = new Customer();
@@ -33,6 +33,38 @@ export class CustomerService {
     };
   }
 
+  async getCustomer() {
+    try {
+      const result = await this.customerRepository
+        .createQueryBuilder('c')
+        .select([
+          'c.id',
+          'c.name',
+          'c.address',
+          'c.email',
+          'c.telephone',
+          'c.status'
+        ])
+        .where('isenabled = true')
+        .getMany();
+
+      return {
+        code: 0,
+        status: true,
+        message: 'get customer data successfully',
+        data: result
+      }
+    } catch (error) {
+      console.log('Error get customer:', error)
+
+      return {
+        code: 1,
+        status: false,
+        message: error
+      }
+    }
+  }
+
   async findAll() {
     const customers = await this.customerRepository.find({
       where: { isenabled: true },
@@ -48,8 +80,21 @@ export class CustomerService {
   }
 
   async findOne(id: number) {
+    // เพิ่มการตรวจสอบ input
+    console.log('CustomerService.findOne received:', id, typeof id);
+
+    // ตรวจสอบว่า id ถูกต้องหรือไม่
+    if (id === null || id === undefined || isNaN(id) || !Number.isInteger(Number(id))) {
+      return {
+        code: 0,
+        status: false,
+        message: `Invalid customer ID: ${id}`,
+        data: null
+      };
+    }
+
     const customer = await this.customerRepository.findOne({
-      where: { id, isenabled: true }
+      where: { id: Number(id), isenabled: true }  // แปลงเป็น Number ให้แน่ใจ
     });
 
     if (!customer) {
@@ -70,9 +115,12 @@ export class CustomerService {
   }
 
   async update(id: number, updateCustomerDto: UpdateCustomerDto, userId: number) {
-    const customer = await this.customerRepository.findOneBy({ id });
+    console.log('Start update for customer id:', id);
 
+    // หา customer ก่อน
+    const customer = await this.customerRepository.findOneBy({ id });
     if (!customer || !customer.isenabled) {
+      console.log('Customer not found or disabled');
       return {
         code: 0,
         status: false,
@@ -81,23 +129,43 @@ export class CustomerService {
       };
     }
 
-    // อัพเดตข้อมูล
-    if (updateCustomerDto.name) customer.name = updateCustomerDto.name;
-    if (updateCustomerDto.address) customer.address = updateCustomerDto.address;
-    if (updateCustomerDto.telephone) customer.telephone = updateCustomerDto.telephone;
-    if (updateCustomerDto.email) customer.email = updateCustomerDto.email;
-    
-    customer.update_date = new Date();
-    customer.update_by = userId;
+    // อัพเดต fields ทีละตัว
+    const fieldsToUpdate: Partial<Customer> = {};
+    if (updateCustomerDto.name) fieldsToUpdate.name = updateCustomerDto.name;
+    if (updateCustomerDto.address) fieldsToUpdate.address = updateCustomerDto.address;
+    if (updateCustomerDto.telephone) fieldsToUpdate.telephone = updateCustomerDto.telephone;
+    if (updateCustomerDto.email) fieldsToUpdate.email = updateCustomerDto.email;
+    if (updateCustomerDto.status != undefined) fieldsToUpdate.status = updateCustomerDto.status;
 
-    await this.customerRepository.save(customer);
+    // set update info
+    fieldsToUpdate.update_by = userId;
+    fieldsToUpdate.update_date = new Date();
 
-    return {
-      code: 1,
-      status: true,
-      message: 'อัพเดตข้อมูลลูกค้าสำเร็จ',
-      data: customer
-    };
+    console.log('Fields to update:', fieldsToUpdate);
+
+    // ใช้ save แยก fields แทน merge ทั้ง object เพื่อลดปัญหา
+    try {
+      const updatedCustomer = await this.customerRepository.save({
+        id: customer.id,
+        ...fieldsToUpdate
+      });
+      console.log('Customer updated successfully');
+
+      return {
+        code: 1,
+        status: true,
+        message: 'อัพเดตข้อมูลลูกค้าสำเร็จ',
+        data: updatedCustomer
+      };
+    } catch (error) {
+      console.error('Error updating customer:', error);
+      return {
+        code: 0,
+        status: false,
+        message: 'เกิดข้อผิดพลาดในการอัพเดตข้อมูลลูกค้า',
+        data: null
+      };
+    }
   }
 
   async remove(id: number) {
@@ -120,10 +188,9 @@ export class CustomerService {
       code: 1,
       status: true,
       message: 'ลบข้อมูลลูกค้าสำเร็จ',
-      data: null
     };
   }
-  
+
   async findCustomersByUserId(userId: number) {
     const customers = await this.customerRepository
       .createQueryBuilder('c')

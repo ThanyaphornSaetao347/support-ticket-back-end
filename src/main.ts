@@ -3,9 +3,6 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
-import * as express from 'express';
-import { join } from 'path';
-
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -20,7 +17,7 @@ async function bootstrap() {
       'http://localhost:4200',        // Angular dev server
     ],
     credentials: false,               // เปลี่ยนเป็น false เพราะไม่ใช้ cookie
-    methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
       'Authorization',

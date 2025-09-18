@@ -1,7 +1,8 @@
-import { Controller, Post, Get, UseGuards, Request, Param, ParseIntPipe, Body } from '@nestjs/common';
+import { Controller, Post, Get, UseGuards, Request, Param, ParseIntPipe, Body, Delete, Patch } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt_auth.guard';
 import { ProjectService } from './project.service';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { UpdateProjectDto } from './dto/update-project.dto';
 import { PermissionGuard } from '../permission/permission.guard';
 import { RequireAnyAction } from '../permission/permission.decorator';
 
@@ -25,7 +26,7 @@ export class ProjectController {
   }
 
   @UseGuards(JwtAuthGuard, PermissionGuard)
-  @RequireAnyAction('create_projcet')
+  @RequireAnyAction('create_project')
   @Post('projects')
   async createProject(@Body() createProjectDto: CreateProjectDto, @Request() req) {
     console.log('User in request:', req.user);
@@ -45,6 +46,13 @@ export class ProjectController {
     return this.projectService.getProjectsForUser(userId);
   }
 
+  // เส้นดึง project พร้อมกับ status
+  @UseGuards(JwtAuthGuard)
+  @Get('get_all_project')
+  async getProjectAll() {
+    return await this.projectService.getProjects()
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('projects/all')
   async getAllProjects() {
@@ -55,5 +63,22 @@ export class ProjectController {
   @Get('projects/:id')
   async getProjectById(@Param('id', ParseIntPipe) id: number) {
     return this.projectService.getProjectById(id);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('create_project')
+  @Patch('project/update/:id')
+  async updateProject(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateProjectDto: Partial<UpdateProjectDto>,
+  ) {
+    return this.projectService.updateProject(id, updateProjectDto);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('create_project')
+  @Delete('project/delete/:id')
+  async deleteProject(@Param('id', ParseIntPipe) id: number) {
+    return this.projectService.deleteProject(id);
   }
 }

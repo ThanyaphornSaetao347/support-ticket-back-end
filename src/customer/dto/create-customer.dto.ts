@@ -42,6 +42,9 @@ export class CreateCustomerDto {
     update_by!: number;
 
     @IsOptional()
+    status: boolean;
+
+    @IsOptional()
     @IsBoolean()
     isenabled?: boolean;
 }

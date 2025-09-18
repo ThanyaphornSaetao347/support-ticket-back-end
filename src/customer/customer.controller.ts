@@ -1,16 +1,19 @@
 // customer/customer.controller.ts
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, BadRequestException } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { JwtAuthGuard } from '../auth/jwt_auth.guard';
+import { PermissionGuard } from '../permission/permission.guard';
+import { RequireAnyAction } from '../permission/permission.decorator';
 
-@Controller('api/customer')
+@Controller('api')
 export class CustomerController {
   constructor(private readonly customerService: CustomerService) { }
 
-  @UseGuards(JwtAuthGuard)
-  @Post()
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('manage_customer')
+  @Post('customer')
   create(@Body() createCustomerDto: CreateCustomerDto, @Request() req) {
     console.log('User in request:', req.user);
 
@@ -23,8 +26,15 @@ export class CustomerController {
     return this.customerService.create(createCustomerDto, userId);
   }
 
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('manage_customer')
+  @Get('get_customer_data')
+  async getCustomerData() {
+    return this.customerService.getCustomer()
+  }
+
   @UseGuards(JwtAuthGuard)
-  @Get()
+  @Get('get_all_customer')
   findAll() {
     return this.customerService.findAll();
   }
@@ -39,15 +49,23 @@ export class CustomerController {
     return this.customerService.findCustomersByUserId(userId);
   }
 
+  // ใน customer.controller.ts
+  @Get('getOne/:id')
+  findOne(@Param('id') rawId: string) {
+    console.log('Customer Controller received ID:', rawId);
 
-  @UseGuards(JwtAuthGuard)
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.customerService.findOne(+id);
+    const id = parseInt(rawId, 10);
+
+    if (isNaN(id)) {
+      throw new BadRequestException(`Customer ID must be a valid number, received: "${rawId}"`);
+    }
+
+    return this.customerService.findOne(id);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Patch(':id')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('manage_customer')
+  @Patch('customer/update/:id')
   update(
     @Param('id') id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
@@ -64,8 +82,9 @@ export class CustomerController {
     return this.customerService.update(+id, updateCustomerDto, userId);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('manage_customer')
+  @Delete('customer/delete/:id')
   remove(@Param('id') id: string) {
     return this.customerService.remove(+id);
   }

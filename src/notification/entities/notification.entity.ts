@@ -20,7 +20,7 @@ export class Notification {
     @Column()
     user_id: number;
 
-    @Column({ nullable: true })
+    @Column({ default: 1 })
     status_id: number;
 
     @Column({

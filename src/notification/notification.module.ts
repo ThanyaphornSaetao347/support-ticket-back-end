@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { NotificationController } from './notification.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -10,6 +10,8 @@ import { TicketStatus } from '../ticket_status/entities/ticket_status.entity';
 import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
 import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
 import { ConfigModule } from '@nestjs/config';
+import { TicketModule } from '../ticket/ticket.module';
+import { TicketCategory } from '../ticket_categories/entities/ticket_category.entity';
 
 @Module({
   imports: [
@@ -22,7 +24,8 @@ import { ConfigModule } from '@nestjs/config';
       Ticket,
       TicketStatus,
       TicketAssigned,
-      UserAllowRole
+      UserAllowRole,
+      TicketCategory,
     ]),
     MailerModule.forRoot({
       transport: {
@@ -31,13 +34,14 @@ import { ConfigModule } from '@nestjs/config';
         secure: false,
         auth: {
           user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
+          pass: process.env.EMAIL_PASS
         },
       },
       defaults: {
         from: ' "No Reply" <noreply@example.com>',
       },
     }),
+    forwardRef(() => TicketModule),
   ],
   controllers: [NotificationController],
   providers: [NotificationService],

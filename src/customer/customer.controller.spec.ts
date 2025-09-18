@@ -63,6 +63,7 @@ describe('CustomerController', () => {
       email: 'test@example.com',
       create_by: 1,
       update_by: 1,
+      status: true,
     };
 
     const mockCreateResponse = {
@@ -438,6 +439,7 @@ describe('CustomerController', () => {
           email: 'test@example.com',
           create_by: 1,
           update_by: 1,
+          status: true
         };
 
         service.create = jest.fn().mockRejectedValue(new Error('Database error'));
@@ -469,6 +471,7 @@ describe('CustomerController', () => {
           email: 'test@example.com',
           create_by: 1,
           update_by: 1,
+          status: true,
         };
         const requestWithoutUser = { user: {} } as any;
         const mockResponse = { code: 1, status: true, message: 'Success', data: {} as any };
