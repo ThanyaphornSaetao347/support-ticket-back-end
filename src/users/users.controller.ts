@@ -12,17 +12,7 @@ import { CreateUserAllowRoleDto } from '../user_allow_role/dto/create-user_allow
 @Controller('api/users')
 export class UserController {
   constructor(private readonly userService: UserService) { }
-
-  private async canAddUser(userId: number): Promise<boolean> {
-    if (!userId) return false;
-
-    // ดึง role ของ user จากฐานข้อมูล (เช่น ผ่าน userService)
-    const roles: number[] = await this.userService.getUserIdsByRole([15]);
-
-    // สมมติ role 1 = Admin, role 2 = SuperAdmin สามารถเพิ่มผู้ใช้ได้
-    return roles.some(r => roles.includes(r));
-  }
-
+  
   @Post()
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAction('create_user')
@@ -60,17 +50,17 @@ export class UserController {
     return this.userService.userAccount();
   }
 
-  @Get()
-  @UseGuards(AuthGuard('jwt'))
-  findAll(@Query('username') username?: string, @Query('email') email?: string) {
-    return this.userService.findAll({ username, email });
-  }
+  // @Get()
+  // @UseGuards(AuthGuard('jwt'))
+  // findAll(@Query('username') username?: string, @Query('email') email?: string) {
+  //   return this.userService.findAll({ username, email });
+  // }
 
-  @Get(':id')
-  @UseGuards(AuthGuard('jwt'))
-  findOne(@Param('id') id: string) {
-    return this.userService.findOne(+id);
-  }
+  // @Get(':id')
+  // @UseGuards(AuthGuard('jwt'))
+  // findOne(@Param('id') id: string) {
+  //   return this.userService.findOne(+id);
+  // }
 
   @Patch('update/:id')
   @UseGuards(AuthGuard('jwt'))

@@ -11,6 +11,7 @@ import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.enti
 import { MailerService } from '@nestjs-modules/mailer';
 import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
 import { TicketCategory } from '../ticket_categories/entities/ticket_category.entity';
+import { NotificationGateway } from './notification.gateway';
 
 @Injectable()
 export class NotificationService {
@@ -30,7 +31,8 @@ export class NotificationService {
     @InjectRepository(TicketCategory)
     private readonly categoryRepo: Repository<TicketCategory>,
 
-    private readonly mailerService: MailerService
+    private readonly mailerService: MailerService,
+    private readonly notificationGateway: NotificationGateway,
   ) { }
 
   /**
@@ -91,7 +93,12 @@ export class NotificationService {
       email_sent: dto.email_sent ?? false,
       create_date: new Date()
     });
-    return this.notiRepo.save(notification);
+    const savedNotification = await this.notiRepo.save(notification);
+    
+    // ส่ง WebSocket notification ทันที
+    await this.sendWebSocketNotification(savedNotification);
+    
+    return savedNotification;
   }
 
   async createNotificationsBulk(payload: {
@@ -179,6 +186,9 @@ export class NotificationService {
       const savedNotification = await this.notiRepo.save(notification);
       console.log(`✅ Status change notification created with ID: ${savedNotification.id}`);
 
+      // ส่ง WebSocket notification
+      await this.sendWebSocketNotification(savedNotification);
+
       // ส่ง email แบบ async
       this.sendEmailNotification(savedNotification).catch(error => {
         console.error('❌ Failed to send status change email:', error);
@@ -264,6 +274,9 @@ export class NotificationService {
           const savedNotification = await this.notiRepo.save(notification);
           notifications.push(savedNotification);
 
+          // ส่ง WebSocket notification
+      await this.sendWebSocketNotification(savedNotification);
+
           // ส่ง email แบบ async
           this.sendEmailNotification(savedNotification).catch(error => {
             console.error(`❌ Failed to send new ticket email to admin ${admin.id}:`, error);
@@ -346,6 +359,9 @@ export class NotificationService {
       const savedNotification = await this.notiRepo.save(notification);
       console.log(`✅ Assignment notification created with ID: ${savedNotification.id}`);
 
+      // ส่ง WebSocket notification
+      await this.sendWebSocketNotification(savedNotification);
+
       // ส่ง email แบบ async
       this.sendEmailNotification(savedNotification).catch(error => {
         console.error('❌ Failed to send assignment email:', error);
@@ -356,6 +372,32 @@ export class NotificationService {
     } catch (error) {
       console.error('❌ Error creating assignment notification:', error);
       throw error;
+    }
+  }
+
+  private async sendWebSocketNotification(notification: Notification): Promise<void> {
+    try {
+      console.log(`🔌 Sending WebSocket notification to user ${notification.user_id}`);
+
+      // ส่ง notification แบบ real-time
+      await this.notificationGateway.sendNotificationToUser(notification.user_id, {
+        id: notification.id,
+        ticket_no: notification.ticket_no,
+        notification_type: notification.notification_type,
+        title: notification.title,
+        message: notification.message,
+        is_read: notification.is_read,
+        create_date: notification.create_date,
+      });
+
+      // อัพเดท unread count
+      const unreadCount = await this.getUnreadCount(notification.user_id);
+      await this.notificationGateway.updateUnreadCount(notification.user_id, unreadCount);
+
+      console.log(`✅ WebSocket notification sent successfully`);
+    } catch (error) {
+      console.error(`❌ Error sending WebSocket notification:`, error);
+      // ไม่ throw error เพราะไม่อยากให้ WebSocket error หยุดการทำงานหลัก
     }
   }
 
@@ -994,7 +1036,7 @@ export class NotificationService {
     }
   }
 
-  // ✅ ทำเครื่องหมายว่าอ่านแล้ว
+  // แก้ไข markAsRead ให้อัพเดท WebSocket
   async markAsRead(notificationId: number, userId: number) {
     try {
       const notification = await this.notiRepo.findOne({
@@ -1014,6 +1056,10 @@ export class NotificationService {
         read_at: new Date()
       });
 
+      // อัพเดท unread count ผ่าน WebSocket
+      const unreadCount = await this.getUnreadCount(userId);
+      await this.notificationGateway.updateUnreadCount(userId, unreadCount);
+
       return await this.notiRepo.findOne({
         where: { id: notificationId },
         relations: ['user', 'ticket', 'status']
@@ -1031,6 +1077,9 @@ export class NotificationService {
         { user_id: userId, is_read: false },
         { is_read: true, read_at: new Date() }
       );
+
+      // อัพเดท unread count ผ่าน WebSocket (ควรเป็น 0)
+      await this.notificationGateway.updateUnreadCount(userId, 0);
 
       return { updated: result.affected || 0 };
     } catch (error) {

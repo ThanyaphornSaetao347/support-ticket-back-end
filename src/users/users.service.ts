@@ -158,37 +158,37 @@ export class UserService {
   }
   // ลบฟังก์ชัน createUser เนื่องจากซ้ำซ้อนกับ create และไม่มีการเข้ารหัสรหัสผ่าน
 
-  findAll(filter: { username?: string; email?: string }) {
-    const where: any = {};
+  // findAll(filter: { username?: string; email?: string }) {
+  //   const where: any = {};
 
-    if (filter.username) {
-      where.username = Like(`%${filter.username}%`);
-    }
+  //   if (filter.username) {
+  //     where.username = Like(`%${filter.username}%`);
+  //   }
 
-    if (filter.email) {
-      where.email = Like(`%${filter.email}%`);
-    }
+  //   if (filter.email) {
+  //     where.email = Like(`%${filter.email}%`);
+  //   }
 
-    return this.userRepository.find({
-      where,
-      select: [
-        'id',
-        'username',
-        'password',
-        'email',
-        'firstname',
-        'lastname',
-        'phone',
-        'isenabled',
-        'start_date',
-        'end_date',
-        'create_date',
-        'create_by',
-        'update_date',
-        'update_by',
-      ] // เลือกเฉพาะข้อมูลที่จำเป็น ไม่รวมรหัสผ่าน
-    });
-  }
+  //   return this.userRepository.find({
+  //     where,
+  //     select: [
+  //       'id',
+  //       'username',
+  //       'password',
+  //       'email',
+  //       'firstname',
+  //       'lastname',
+  //       'phone',
+  //       'isenabled',
+  //       'start_date',
+  //       'end_date',
+  //       'create_date',
+  //       'create_by',
+  //       'update_date',
+  //       'update_by',
+  //     ] // เลือกเฉพาะข้อมูลที่จำเป็น ไม่รวมรหัสผ่าน
+  //   });
+  // }
 
   async findOne(id: number) {
     const user = await this.userRepository.findOneBy({ id });
@@ -201,21 +201,21 @@ export class UserService {
     return result;
   }
 
-  async findByUsername(username: string) {
-    const user = await this.userRepository.findOne({ where: { username } });
-    if (!user) {
-      return null;
-    }
-    return user;
-  }
+  // async findByUsername(username: string) {
+  //   const user = await this.userRepository.findOne({ where: { username } });
+  //   if (!user) {
+  //     return null;
+  //   }
+  //   return user;
+  // }
 
-  async findById(id: number) {
-    const user = await this.userRepository.findOne({ where: { id } });
-    if (!user) {
-      return null;
-    }
-    return user;
-  }
+  // async findById(id: number) {
+  //   const user = await this.userRepository.findOne({ where: { id } });
+  //   if (!user) {
+  //     return null;
+  //   }
+  //   return user;
+  // }
 
 
   async update(user_id: number, updateUserDto: UpdateUserDto) {
@@ -278,6 +278,7 @@ export class UserService {
       .where('c.name IS NOT NULL')
       .andWhere('c.address IS NOT NULL')
       .andWhere('c.telephone IS NOT NULL')
+      .distinct(true)
       .getRawMany();
 
     return account;

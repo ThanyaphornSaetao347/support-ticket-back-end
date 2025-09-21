@@ -12,6 +12,9 @@ import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entit
 import { ConfigModule } from '@nestjs/config';
 import { TicketModule } from '../ticket/ticket.module';
 import { TicketCategory } from '../ticket_categories/entities/ticket_category.entity';
+import { NotificationGateway } from './notification.gateway';
+import { TicketService } from 'src/ticket/ticket.service';
+import { JwtModule } from '@nestjs/jwt';
 
 @Module({
   imports: [
@@ -27,6 +30,10 @@ import { TicketCategory } from '../ticket_categories/entities/ticket_category.en
       UserAllowRole,
       TicketCategory,
     ]),
+    JwtModule.register({
+      secret: process.env.JWT_SECRET,
+      signOptions: { expiresIn: '3h'}
+    }),
     MailerModule.forRoot({
       transport: {
         host: 'smtp.gmail.com',
@@ -44,7 +51,10 @@ import { TicketCategory } from '../ticket_categories/entities/ticket_category.en
     forwardRef(() => TicketModule),
   ],
   controllers: [NotificationController],
-  providers: [NotificationService],
+  providers: [
+    NotificationService,
+    NotificationGateway,
+  ],
   exports:[NotificationService],
 })
 export class NotificationModule {}
