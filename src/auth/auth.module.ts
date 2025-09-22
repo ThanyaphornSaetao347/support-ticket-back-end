@@ -19,7 +19,7 @@ import { UserModule } from '../users/users.module';
         secret: config.get<string>('JWT_SECRET'),
         signOptions: {
           // แก้ typo: JWT_EXPRIRES_IN -> JWT_EXPIRES_IN
-          expiresIn: config.get<string>('JWT_EXPIRES_IN') || '3h'
+          expiresIn: config.get<string>('JWT_EXPIRES_IN') || '15m',
         },
       }),
       inject: [ConfigService],

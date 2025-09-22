@@ -153,7 +153,7 @@ describe('AuthService', () => {
     const mockPermissions = [1, 2, 3];
 
     beforeEach(() => {
-      configService.get.mockReturnValue('3h');
+      configService.get.mockReturnValue('15m');
       jwtService.sign.mockReturnValue('mock-jwt-token');
       jest.spyOn(service, 'getUserPermissions').mockResolvedValue(mockPermissions);
     });

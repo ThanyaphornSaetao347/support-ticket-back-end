@@ -215,9 +215,6 @@ export class TicketService {
         const savedTicket = await this.ticketRepo.save(ticket);
         ticket_id = savedTicket.id;
         status = true;
-
-        // sent noti to supporter
-        await this.notifySupporters(savedTicket);
       }
 
       return {
@@ -230,43 +227,7 @@ export class TicketService {
       throw error;
     }
   }
-
-  private async notifySupporters(ticket: Ticket) {
-    try {
-      const supporterRoleIds = [5, 6, 7, 8, 9, 10, 13]
-
-      const supporterUserIds = await this.userRepo
-        .createQueryBuilder('u')
-        .select('DISTINCT u.id')
-        .innerJoin('user_allow_role', 'uar', 'uar.user_id = u.id')
-        .innerJoin('master_role', 'ms', 'ms.id = uar.role_id')
-        .where('ms.id IN (:...supporterRoleIds)', { supporterRoleIds })
-        .getRawMany();
-
-      if (supporterRoleIds.length === 0) {
-        console.warn('No Supporter found for notification')
-        return;
-      }
-
-      const userIds = supporterUserIds.map(u => u.id);
-      const supporters = await this.userRepo.findByIds(userIds)
-
-      console.log(`Found ${supporters.length} supporter:`, userIds)
-
-
-      for (const supporter of supporters) {
-        try {
-          await this.notiService.createNewTicketNotification(ticket.ticket_no);
-          console.log(`Notification sent to supporter: ${supporter.id} (${supporter.email})`);
-        } catch (notifyError) {
-          console.error(`Failed to notify supporter ${supporter.id}:`, notifyError);
-        }
-      }
-    } catch (error) {
-      console.error('Error notifying supporters:', error);
-    }
-  }
-
+  
   // Function สำหรับ ticket_no = (Running Format: T250500001 Format มาจาก YYMM00000 [ปี:2][เดือน:2][Running:00000])
   async generateTicketNumber(): Promise<string> {
     const now = new Date();

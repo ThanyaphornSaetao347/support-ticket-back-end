@@ -12,13 +12,28 @@ interface LoginResponse {
     username: string;
   } | null;
   access_token: string | null;
+  refresh_token?: string | null; // เพิ่ม refresh token
   expires_in?: string;
   expires_at?: string;
   token_expires_timestamp?: number;
-  permission?: number[]; // เพิ่ม permission field
+  refresh_expires_in?: string; // เพิ่มข้อมูล refresh token expiry
+  refresh_expires_at?: string;
+  permission?: number[];
 }
 
-// เพิ่ม interface สำหรับ response ทั่วไป
+interface RefreshTokenResponse {
+  code: number;
+  status: boolean;
+  message: string;
+  access_token: string | null;
+  refresh_token: string | null;
+  expires_in?: string;
+  expires_at?: string;
+  token_expires_timestamp?: number;
+  refresh_expires_in?: string;
+  refresh_expires_at?: string;
+}
+
 interface GeneralResponse {
   code: number;
   status: boolean;
@@ -61,11 +76,49 @@ export class AuthController {
     return result;
   }
 
-  // เพิ่ม endpoint สำหรับตรวจสอบ profile (ทดสอบ JWT)
+  // เพิ่ม endpoint สำหรับ refresh token
+  @Post('refresh')
+  async refreshToken(@Body('refresh_token') refreshToken: string): Promise<RefreshTokenResponse> {
+    try {
+      if (!refreshToken) {
+        throw new HttpException({
+          code: 0,
+          status: false,
+          message: 'Refresh token is required',
+          error: 'REFRESH_TOKEN_REQUIRED',
+        }, HttpStatus.BAD_REQUEST);
+      }
+
+      console.log('Refresh token request received');
+      
+      const result = await this.authService.refreshToken(refreshToken);
+      
+      console.log('Token refreshed successfully');
+      
+      return result;
+
+    } catch (error) {
+      console.error('Refresh token error:', error);
+      
+      if (error.status === HttpStatus.BAD_REQUEST) {
+        throw error;
+      }
+      
+      throw new HttpException({
+        code: 0,
+        status: false,
+        message: error.message || 'Failed to refresh token',
+        error: error.error || 'REFRESH_TOKEN_ERROR',
+        data: {
+          shouldRedirectToLogin: true,
+        },
+      }, HttpStatus.UNAUTHORIZED);
+    }
+  }
+
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   async getProfile(@Request() req) {
-    // ดึง permissions ของ user
     const permissions = await this.authService.getUserPermissions(req.user.id);
     
     return {
@@ -77,7 +130,6 @@ export class AuthController {
     };
   }
 
-  // เพิ่ม endpoint สำหรับตรวจสอบ token expiration (ปรับปรุง)
   @Get('check-token')
   @UseGuards(JwtAuthGuard)
   async checkToken(@Headers('authorization') authHeader: string, @Request() req) {
@@ -108,29 +160,25 @@ export class AuthController {
         error: 'TOKEN_INVALID',
         data: {
           shouldRedirectToLogin: true,
+          shouldTryRefreshToken: true, // แนะนำให้ลองใช้ refresh token
         },
       }, HttpStatus.UNAUTHORIZED);
     }
   }
 
-  // เพิ่ม endpoint สำหรับ logout
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   async logout() {
-    // ในระบบจริง อาจต้องเพิ่ม token ลงใน blacklist
-    // แต่ในกรณีนี้เราจะให้ client ลบ token เอง
-    
     return {
       code: 1,
       status: true,
-      message: 'Logout successful. Please remove token from client storage.',
+      message: 'Logout successful. Please remove tokens from client storage.',
       data: {
-        instruction: 'Remove access_token from localStorage/sessionStorage',
+        instruction: 'Remove access_token and refresh_token from localStorage/sessionStorage',
       },
     };
   }
 
-  // เพิ่ม endpoint สำหรับ validate token
   @Post('validate')
   async validateToken(@Body('token') token: string) {
     try {
@@ -170,6 +218,7 @@ export class AuthController {
         error: error.error || 'TOKEN_INVALID',
         data: {
           shouldRedirectToLogin: true,
+          shouldTryRefreshToken: true, // แนะนำให้ลองใช้ refresh token
         },
       }, HttpStatus.UNAUTHORIZED);
     }
