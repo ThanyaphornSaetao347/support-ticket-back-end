@@ -268,16 +268,18 @@ export class UserService {
       .leftJoin('customer_for_project', 'cfp', 'cfp.user_id = u.id')
       .leftJoin('customer', 'c', 'c.id = cfp.customer_id')
       .select([
+        'u.id as id',
         `u.firstname || ' ' || u.lastname AS name`,
         'u.email AS user_email',
         'c.name AS company',
         'c.address AS company_address',
         'u.phone AS user_phone',
-        'c.telephone AS company_phone'
+        'c.telephone AS company_phone',
+        'u.password as password'
       ])
-      .where('c.name IS NOT NULL')
-      .andWhere('c.address IS NOT NULL')
-      .andWhere('c.telephone IS NOT NULL')
+      // .where('c.name IS NOT NULL')
+      // .andWhere('c.address IS NOT NULL')
+      // .andWhere('c.telephone IS NOT NULL')
       .distinct(true)
       .getRawMany();
 
