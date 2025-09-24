@@ -53,6 +53,7 @@ export class ProjectController {
     return await this.projectService.getProjects()
   }
 
+  // ใช้เป็น ddl ใน customer for project
   @UseGuards(JwtAuthGuard)
   @Get('projects/all')
   async getAllProjects() {

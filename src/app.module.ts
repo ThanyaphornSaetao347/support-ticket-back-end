@@ -39,6 +39,7 @@ import { NotificationModule } from './notification/notification.module';
 import { PermissionModule } from './permission/permission.module';
 import { APP_GUARD } from '@nestjs/core';
 import { PermissionGuard } from './permission/permission.guard';
+import { HtmlToPdfModule } from './html-to-pdf/html-to-pdf.module';
 
 
 @Module({
@@ -90,7 +91,8 @@ import { PermissionGuard } from './permission/permission.guard';
     TicketAssignedModule,
     SatisfactionModule,
     NotificationModule,
-    PermissionModule
+    PermissionModule,
+    HtmlToPdfModule
   ],
   controllers: [AppController],
   providers: [

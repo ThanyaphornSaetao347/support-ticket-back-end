@@ -148,32 +148,20 @@ export class ProjectService {
 
   async getAllProjects() {
     try {
-      // ดึงโปรเจคทั้งหมดพร้อม relations
-      const projects = await this.projectRepository.find({
-        where: { isenabled: true },
-        relations: ['customerProjects', 'customerProjects.customer'],
-        order: { name: 'ASC' },
-      });
-
-      const formattedData = projects.map(project => ({
-        id: project.id,
-        name: project.name,
-        // description: project.description, // ลบออกถ้า entity ไม่มี field นี้
-        create_date: project.create_date,
-        isenabled: project.isenabled,
-        customers: project.customerProjects // เปลี่ยนจาก customerForProjects
-          ?.filter(cfp => cfp.isenabled)
-          .map(cfp => ({
-            customer_id: cfp.customer?.id,
-            customer_name: cfp.customer?.name,
-          })) || [],
-      }));
+      const project = await this.projectRepository
+        .createQueryBuilder('p')
+        .select([
+          'p.id as id',
+          'p.name as name'
+        ])
+        .groupBy('p.id')
+        .getRawMany();
 
       return {
         code: 1,
         status: true,
         message: 'Success',
-        data: formattedData,
+        data: project,
       };
     } catch (error) {
       console.error('Error in getAllProjects:', error);

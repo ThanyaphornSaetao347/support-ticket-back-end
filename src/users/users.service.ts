@@ -130,6 +130,26 @@ export class UserService {
     }
   }
 
+  async getAllUser() {
+    try {
+      const userDDL = this.userRepository
+      .createQueryBuilder('u')
+      .select([
+        'u.id as id',
+        `u.firstname || \' \' || u.lastname as name`,
+        'u.email as email'
+      ])
+      .distinct(true)
+      .orderBy('u.id', 'ASC')
+      .getRawMany();
+
+      return userDDL;
+    } catch (error) {
+      console.log('User DDL Error:', error)
+      throw error;
+    }
+  }
+
   // ใน user.service.ts
   async getUserIdsByRole(
     roleIds: number[],

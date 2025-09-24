@@ -14,17 +14,15 @@ export class CustomerForProjectController {
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('manage_customer')
   @Post()
-  create(@Body() createCustomerForProjectDto: CreateCustomerForProjectDto, @Request() req) {
+  create(@Body() dto: CreateCustomerForProjectDto, @Request() req) {
     const userId = req.user.id || req.user.sub || req.user.userId;
-    // เพิ่ม user_id จาก token
-    createCustomerForProjectDto.create_by = userId;
-    createCustomerForProjectDto.update_by = userId
+    dto.create_by = userId;
+    dto.update_by = userId;
 
-    return this.customerForProjectService.create(createCustomerForProjectDto);
+    return this.customerForProjectService.create(dto);
   }
 
-  // customer_for_project/customer_for_project.controller.ts
-
+  // use this one
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('manage_customer')
   @Get('cfp-data')
@@ -46,6 +44,7 @@ export class CustomerForProjectController {
     return this.customerForProjectService.getCustomersByProject(projectId);
   }
 
+  // use this one
   @Get('customer/:customerId/projects')
   getProjectsByCustomer(
     @Param('customerId', ParseIntPipe) customerId: number

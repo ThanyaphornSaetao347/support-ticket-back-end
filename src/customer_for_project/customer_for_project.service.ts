@@ -20,127 +20,86 @@ export class CustomerForProjectService {
   ) { }
 
   async create(createDto: CreateCustomerForProjectDto) {
-    // 1. ตรวจสอบข้อมูลที่จำเป็นก่อน
-    if (!createDto.project_id) {
-      return {
-        code: '0',
-        status: false,
-        message: 'Project ID is required',
-        data: null
-      };
-    }
+  // ตรวจสอบ project
+  const project = await this.projectRepository.findOneBy({ id: createDto.project_id });
+  if (!project) {
+    return { code: '0', status: false, message: 'ไม่พบข้อมูลโปรเจค', data: null };
+  }
 
-    if (!createDto.customer_id) {
-      return {
-        code: '0',
-        status: false,
-        message: 'Customer ID is required',
-        data: null
-      };
-    }
+  // ตรวจสอบ customer
+  const customer = await this.customerRepository.findOneBy({ id: createDto.customer_id });
+  if (!customer) {
+    return { code: '0', status: false, message: 'ไม่พบข้อมูลลูกค้า', data: null };
+  }
 
-    if (!createDto.user_id) {
-      return {
-        code: '0',
-        status: false,
-        message: 'User ID is required',
-        data: null
-      };
-    }
+  const savedRecords: CustomerForProject[] = [];
 
-    // 2. ตรวจสอบว่า project_id ที่ส่งมามีอยู่จริง
-    const project = await this.projectRepository.findOneBy({ id: createDto.project_id });
-    if (!project) {
-      return {
-        code: '0',
-        status: false,
-        message: 'ไม่พบข้อมูลโปรเจค',
-        data: null,
-      };
-    }
-
-    // 3. ตรวจสอบว่า customer_id ที่ส่งมามีอยู่จริง
-    const customer = await this.customerRepository.findOneBy({ id: createDto.customer_id });
-    if (!customer) {
-      return {
-        code: '0',
-        status: false,
-        message: 'ไม่พบข้อมูลลูกค้า',
-        data: null,
-      };
-    }
-
-    // 4. ตรวจสอบว่ามีข้อมูลซ้ำหรือไม่
-    const existingRecord = await this.customerForProjectRepository.findOne({
+  for (const user of createDto.assigned_users) {
+    // ตรวจสอบซ้ำ
+    const existing = await this.customerForProjectRepository.findOne({
       where: {
         customerId: createDto.customer_id,
         projectId: createDto.project_id,
-        userId: createDto.user_id,
-        isenabled: true
-      }
+        userId: user.user_id,
+        isenabled: true,
+      },
     });
 
-    if (existingRecord) {
-      return {
-        code: '0',
-        status: false,
-        message: 'ข้อมูลนี้มีอยู่ในระบบแล้ว',
-        data: null
-      };
+    if (existing) {
+      // ข้าม user ที่ซ้ำ
+      continue;
     }
 
-    // 5. สร้างข้อมูล CustomerForProject
     const customerForProject = new CustomerForProject();
-    customerForProject.userId = createDto.user_id;
     customerForProject.customerId = createDto.customer_id;
     customerForProject.projectId = createDto.project_id;
-    customerForProject.create_by = createDto.user_id;
-    customerForProject.update_by = createDto.user_id;
+    customerForProject.userId = user.user_id;
+    customerForProject.create_by = createDto.create_by;
+    customerForProject.update_by = createDto.update_by;
     customerForProject.isenabled = true;
 
-    // 6. บันทึกข้อมูลลงฐานข้อมูล
-    const savedRecord = await this.customerForProjectRepository.save(customerForProject);
-
-    // 7. ส่งผลลัพธ์กลับ
-    return {
-      code: '2',
-      status: true,
-      message: 'สร้างข้อมูลสำเร็จ',
-      data: savedRecord,
-    };
+    const saved = await this.customerForProjectRepository.save(customerForProject);
+    savedRecords.push(saved);
   }
 
+  return {
+    code: '2',
+    status: true,
+    message: 'สร้างข้อมูลสำเร็จ',
+    data: savedRecords,
+  };
+}
+
   async getCFPdata() {
-    const result = await this.customerForProjectRepository
-      .createQueryBuilder('cfp')
-      .leftJoin('customer', 'c', 'c.id = cfp.customer_id')
-      .leftJoin('project', 'p', 'p.id = cfp.project_id')
-      .leftJoin('users_allow_role', 'uar', 'uar.user_id = cfp.user_id')
-      .leftJoin('users', 'u', 'u.id = uar.user_id')
-      .leftJoin(
-        'ticket',
-        't',
-        't.project_id = p.id AND t.status_id = :openStatusId'
-      )
-      .select([
-        'c.id as customer_id',
-        'c.name as customer_name',
-        'c.email as customer_email',
-        'c.telephone as customer_phone',
-        'p.id as project_id',
-        'p.name as project_name',
-        'p.status as project_status',
-        'COUNT(DISTINCT cfp.project_id) as project_count',
-        'COUNT(DISTINCT cfp.user_id) as user_count',
-        'COUNT(DISTINCT t.id) as open_ticket_count',
-        "ARRAY_AGG(DISTINCT u.firstname || ' ' || u.lastname) as assigned_users",
-      ])
-      .where('cfp.isenabled = :enabled', { enabled: true })
-      .setParameter('openStatusId', 2)
-      .groupBy(
-        'c.id, c.name, c.email, c.telephone, p.id, p.name, p.status'
-      )
-      .getRawMany();
+  const result = await this.customerRepository
+    .createQueryBuilder('c')
+    .leftJoin('customer_for_project', 'cfp', 'cfp.customer_id = c.id AND cfp.isenabled = true')
+    .leftJoin('project', 'p', 'p.id = cfp.project_id')
+    .leftJoin('users_allow_role', 'uar', 'uar.user_id = cfp.user_id')
+    .leftJoin('users', 'u', 'u.id = uar.user_id')
+    .leftJoin(
+      'ticket',
+      't',
+      't.project_id = p.id AND t.status_id = :openStatusId'
+    )
+    .select([
+      'c.id as customer_id',
+      'c.name as customer_name',
+      'c.email as customer_email',
+      'c.telephone as customer_phone',
+      'p.id as project_id',
+      'p.name as project_name',
+      'p.status as project_status',
+      'COUNT(DISTINCT cfp.project_id) as project_count',
+      'COUNT(DISTINCT cfp.user_id) as user_count',
+      'COUNT(DISTINCT t.id) as open_ticket_count',
+      "ARRAY_AGG(DISTINCT u.firstname || ' ' || u.lastname) as assigned_users",
+    ])
+    .setParameter('openStatusId', 2)
+    .groupBy(
+      'c.id, c.name, c.email, c.telephone, p.id, p.name, p.status'
+    )
+    .getRawMany();
 
     // 👉 Group ตาม customer_id
     const customersMap = new Map<number, any>();
@@ -294,7 +253,7 @@ export class CustomerForProjectService {
     }
 
     // อัพเดตฟิลด์อื่น ๆ แบบ dynamic
-    const allowedFields: (keyof UpdateCustomerForProjectDto)[] = ['user_id', 'customer_id', 'project_id']; // เพิ่มฟิลด์อื่น ๆ ตาม DTO
+    const allowedFields: (keyof UpdateCustomerForProjectDto)[] = ['assigned_users', 'customer_id', 'project_id']; // เพิ่มฟิลด์อื่น ๆ ตาม DTO
     allowedFields.forEach(field => {
       if (updateDto[field] !== undefined && !['project_id', 'customer_id'].includes(field)) {
         (record as any)[field] = updateDto[field];

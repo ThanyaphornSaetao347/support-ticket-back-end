@@ -30,17 +30,9 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { CreateSatisfactionDto } from '../satisfaction/dto/create-satisfaction.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Ticket } from './entities/ticket.entity';
-import { ForbiddenTransactionModeOverrideError, Repository } from 'typeorm';
-import { NotificationType } from '../notification/entities/notification.entity';
-import { NotificationService } from '../notification/notification.service';
-import { RequireRoles } from '../permission/permission.decorator';
-import { PermissionService } from '../permission/permission.service';
-import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.entity';
-import { UserService } from '../users/users.service';
+import { Repository } from 'typeorm';
 import { RequireAnyAction } from '../permission/permission.decorator';
 import { PermissionGuard } from '../permission/permission.guard';
-import { DashboardResponse, DashboardStatsResponse } from './dto/dashboard.dto';
-import { TicketCategoryService } from '../ticket_categories/ticket_categories.service';
 import { CategoryStatsDTO } from './dto/dashboard.dto';
 
 @Controller('api')
@@ -50,9 +42,6 @@ export class TicketController {
     private readonly ticketRepo: Repository<Ticket>,
     private readonly ticketService: TicketService,
     private readonly ticketStatusService: TicketStatusService,
-    private readonly notiService: NotificationService,
-    private readonly permissionService: PermissionService,
-    private readonly categoriesService: TicketCategoryService,
   ) { }
 
   // ✅ เพิ่ม Language Detection Methods
@@ -264,27 +253,6 @@ export class TicketController {
       );
     }
   }
-
-
-  // @Get('realtime')
-  // async getRealtimeStats(
-  //   @Request() req: any, // required parameter มาก่อน
-  //   @Query('userId') userId?: string,
-  // ): Promise<DashboardStatsResponse> {
-  //   const targetUserId = userId ? parseInt(userId) : req.user?.id;
-  //   const stats = await this.ticketService.getRealtimeStats(targetUserId);
-  //   return new DashboardStatsResponse(stats);
-  // }
-
-  // @Get('monthly/:year')
-  // async getMonthlyStats(
-  //   @Param('year') year: string, // required parameter
-  //   @Request() req: any, // required parameter
-  //   @Query('userId') userId?: string, // optional parameter
-  // ) {
-  //   const targetUserId = userId ? parseInt(userId) : req.user?.id;
-  //   return this.ticketService.getMonthlyTrend(parseInt(year), targetUserId);
-  // }
 
   @Get('summaryCategories')
   async getCategoryBreakdown(

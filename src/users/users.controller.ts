@@ -50,17 +50,12 @@ export class UserController {
     return this.userService.userAccount();
   }
 
-  // @Get()
-  // @UseGuards(AuthGuard('jwt'))
-  // findAll(@Query('username') username?: string, @Query('email') email?: string) {
-  //   return this.userService.findAll({ username, email });
-  // }
-
-  // @Get(':id')
-  // @UseGuards(AuthGuard('jwt'))
-  // findOne(@Param('id') id: string) {
-  //   return this.userService.findOne(+id);
-  // }
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAction('create_user')
+  @Get('Allusers')
+  async allUsers() {
+    return this.userService.getAllUser();
+  }
 
   @Patch('update/:id')
   @UseGuards(AuthGuard('jwt'))

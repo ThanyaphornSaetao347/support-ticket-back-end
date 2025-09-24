@@ -15,26 +15,10 @@ interface AuthResponse {
     username: string;
   } | null;
   access_token: string | null;
-  refresh_token?: string | null; // เพิ่ม refresh token
   expires_in?: string;
   expires_at?: string;
-  token_expires_timestamp?: number;
-  refresh_expires_in?: string; // เพิ่มข้อมูล refresh token expiry
-  refresh_expires_at?: string;
-  permission?: number[];
-}
-
-interface RefreshTokenResponse {
-  code: number;
-  status: boolean;
-  message: string;
-  access_token: string | null;
-  refresh_token: string | null;
-  expires_in?: string;
-  expires_at?: string;
-  token_expires_timestamp?: number;
-  refresh_expires_in?: string;
-  refresh_expires_at?: string;
+  token_expires_timestamp?: number; // เพิ่ม timestamp
+  permission?: number[]; // เพิ่ม permission field
 }
 
 @Injectable()
@@ -51,8 +35,9 @@ export class AuthService {
     if (existingUser) {
       throw new UnauthorizedException('Username already exists');
     }
-    
+    // เข้ารหัสรหัสผ่าน
     const hashed = await bcrypt.hash(dto.password, 10);
+    // สร้างผู้ใช้ใหม่
     const newuser = this.userRepo.create({
       username: dto.username,
       password: hashed
@@ -96,182 +81,77 @@ export class AuthService {
     return result;
   }
 
-  async login(user: any): Promise<AuthResponse> {
-    if (!user) {
-      console.log('Login failed: user is null or undefined');
-      return {
-        code: 0,
-        status: false,
-        message: 'Invalid user data',
-        user: null,
-        access_token: null
-      };
-    }
-
-    console.log('Login processing for user:', user.username, 'ID:', user.id);
-    
-    if (!user.id || !user.username) {
-      console.error('Invalid user object in login:', user);
-      return {
-        code: 0,
-        status: false,
-        message: 'Invalid user data',
-        user: null,
-        access_token: null
-      };
-    }
-    
-    // สร้าง JWT payload สำหรับ access token
-    const accessPayload = { 
-      username: user.username, 
-      sub: user.id,
-      type: 'access' // ระบุประเภท token
-    };
-
-    // สร้าง JWT payload สำหรับ refresh token
-    const refreshPayload = {
-      sub: user.id,
-      type: 'refresh' // ระบุประเภท token
-    };
-
-    console.log('JWT access payload:', accessPayload);
-    console.log('JWT refresh payload:', refreshPayload);
-    
-    const accessExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '15m';
-    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '1d';
-    
-    console.log('Access token will expire in:', accessExpiresIn);
-    console.log('Refresh token will expire in:', refreshExpiresIn);
-    
-    // สร้าง access token
-    const accessToken = this.jwtService.sign(accessPayload, {
-      expiresIn: accessExpiresIn
-    });
-    
-    // สร้าง refresh token
-    const refreshToken = this.jwtService.sign(refreshPayload, {
-      expiresIn: refreshExpiresIn
-    });
-    
-    console.log('Generated tokens for user:', user.username);
-    
-    // คำนวณ expires_at สำหรับ access token
-    const accessExpiresInSeconds = this.parseExpiresIn(accessExpiresIn);
-    const refreshExpiresInSeconds = this.parseExpiresIn(refreshExpiresIn);
-    const now = Math.floor(Date.now() / 1000);
-    const accessExpiresTimestamp = now + accessExpiresInSeconds;
-    const refreshExpiresTimestamp = now + refreshExpiresInSeconds;
-    
-    // ดึง permissions ของ user
-    const permissions = await this.getUserPermissions(user.id);
-    
+// ใน auth.service.ts - แก้ไข login method (บรรทัดที่ 85-86)
+async login(user: any): Promise<AuthResponse> {
+  // เช็ค null ก่อน access properties
+  if (!user) {
+    console.log('Login failed: user is null or undefined');
     return {
-      code: 1,
-      status: true,
-      message: 'Login successful',
-      user: {
-        id: user.id,
-        username: user.username,
-      },
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_in: accessExpiresIn,
-      expires_at: new Date(accessExpiresTimestamp * 1000).toISOString(),
-      token_expires_timestamp: accessExpiresTimestamp,
-      refresh_expires_in: refreshExpiresIn,
-      refresh_expires_at: new Date(refreshExpiresTimestamp * 1000).toISOString(),
-      permission: permissions,
+      code: 0,
+      status: false,
+      message: 'Invalid user data',
+      user: null,
+      access_token: null
     };
   }
 
-  // เพิ่ม method สำหรับ refresh token
-  async refreshToken(refreshToken: string): Promise<RefreshTokenResponse> {
-    try {
-      // ตรวจสอบ refresh token
-      const decoded = this.jwtService.verify(refreshToken);
-      
-      // ตรวจสอบว่าเป็น refresh token จริง
-      if (decoded.type !== 'refresh') {
-        throw new UnauthorizedException('Invalid token type');
-      }
-
-      // ดึงข้อมูล user จากฐานข้อมูล
-      const user = await this.userRepo.findOne({
-        where: { id: decoded.sub },
-        select: ['id', 'username']
-      });
-
-      if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
-
-      // สร้าง access token ใหม่
-      const accessPayload = {
-        username: user.username,
-        sub: user.id,
-        type: 'access'
-      };
-
-      // สร้าง refresh token ใหม่
-      const refreshPayload = {
-        sub: user.id,
-        type: 'refresh'
-      };
-
-      const accessExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '15m';
-      const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '1d';
-
-      const newAccessToken = this.jwtService.sign(accessPayload, {
-        expiresIn: accessExpiresIn
-      });
-
-      const newRefreshToken = this.jwtService.sign(refreshPayload, {
-        expiresIn: refreshExpiresIn
-      });
-
-      // คำนวณ expires_at
-      const accessExpiresInSeconds = this.parseExpiresIn(accessExpiresIn);
-      const refreshExpiresInSeconds = this.parseExpiresIn(refreshExpiresIn);
-      const now = Math.floor(Date.now() / 1000);
-      const accessExpiresTimestamp = now + accessExpiresInSeconds;
-      const refreshExpiresTimestamp = now + refreshExpiresInSeconds;
-
-      console.log('Token refreshed successfully for user:', user.username);
-
-      return {
-        code: 1,
-        status: true,
-        message: 'Token refreshed successfully',
-        access_token: newAccessToken,
-        refresh_token: newRefreshToken,
-        expires_in: accessExpiresIn,
-        expires_at: new Date(accessExpiresTimestamp * 1000).toISOString(),
-        token_expires_timestamp: accessExpiresTimestamp,
-        refresh_expires_in: refreshExpiresIn,
-        refresh_expires_at: new Date(refreshExpiresTimestamp * 1000).toISOString(),
-      };
-
-    } catch (error) {
-      console.error('Refresh token error:', error);
-      
-      if (error.name === 'TokenExpiredError') {
-        throw new UnauthorizedException({
-          message: 'Refresh token expired. Please login again.',
-          error: 'REFRESH_TOKEN_EXPIRED',
-          statusCode: 401,
-        });
-      }
-      
-      throw new UnauthorizedException({
-        message: 'Invalid refresh token',
-        error: 'INVALID_REFRESH_TOKEN',
-        statusCode: 401,
-      });
-    }
+  console.log('Login processing for user:', user.username, 'ID:', user.id);
+  
+  if (!user.id || !user.username) {
+    console.error('Invalid user object in login:', user);
+    return {
+      code: 0,
+      status: false,
+      message: 'Invalid user data',
+      user: null,
+      access_token: null
+    };
   }
+  
+  // สร้าง JWT payload
+  const payload = { 
+    username: user.username, 
+    sub: user.id,
+  };
 
+  console.log('JWT payload:', payload);
+  
+  const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '3h';
+  console.log('Token will expire in:', expiresIn);
+  
+  // สร้าง access token
+  const accessToken = this.jwtService.sign(payload);
+  
+  console.log('Generated token for user:', user.username);
+  
+  // คำนวณ expires_at สำหรับ frontend
+  const expiresInSeconds = this.parseExpiresIn(expiresIn);
+  const now = Math.floor(Date.now() / 1000);
+  const expiresTimestamp = now + expiresInSeconds;
+  
+  // ดึง permissions ของ user
+  const permissions = await this.getUserPermissions(user.id);
+  
+  return {
+    code: 1,
+    status: true,
+    message: 'Login successful',
+    user: {
+      id: user.id,
+      username: user.username,
+    },
+    access_token: accessToken,
+    expires_in: expiresIn,
+    expires_at: new Date(expiresTimestamp * 1000).toISOString(),
+    token_expires_timestamp: expiresTimestamp,
+    permission: permissions,
+  };
+}
+
+  // เพิ่ม method สำหรับดึง permissions ของ user จาก database
   async getUserPermissions(userId: number): Promise<number[]> {
     try {
+      // ใช้ raw query ดึง permissions จาก user_allow_role table
       const userRoles = await this.userRepo.query(`
         SELECT role_id 
         FROM users_allow_role 
@@ -283,9 +163,11 @@ export class AuthService {
         return [];
       }
 
+      // ดึง role_id ออกมา
       const roleIds = userRoles.map(r => r.role_id);
       console.log(`User ${userId} has roles:`, roleIds);
 
+      // return role_ids ที่เป็น permissions
       return roleIds;
 
     } catch (error) {
@@ -294,33 +176,29 @@ export class AuthService {
     }
   }
 
+  // Helper method สำหรับแปลง expires_in เป็น seconds
   private parseExpiresIn(expiresIn: string): number {
     const unit = expiresIn.slice(-1);
     const value = parseInt(expiresIn.slice(0, -1));
 
     switch (unit) {
       case 'h':
-        return value * 60 * 60;
+        return value * 60 * 60; // hours to seconds
       case 'm':
-        return value * 60;
+        return value * 60; // minutes to seconds
       case 's':
-        return value;
+        return value; // seconds
       case 'd':
-        return value * 24 * 60 * 60;
+        return value * 24 * 60 * 60; // days to seconds
       default:
-        return 15 * 60; // default 15 minutes (แก้จาก 3 ชั่วโมง)
+        return 3 * 60 * 60; // default 3 hours
     }
   }
 
+  // เพิ่ม method สำหรับตรวจสอบ token
   async validateToken(token: string) {
     try {
       const decoded = this.jwtService.verify(token);
-      
-      // ตรวจสอบว่าเป็น access token
-      if (decoded.type && decoded.type !== 'access') {
-        throw new UnauthorizedException('Invalid token type');
-      }
-      
       const user = await this.userRepo.findOne({
         where: { id: decoded.sub },
         select: ['id', 'username']
@@ -343,6 +221,7 @@ export class AuthService {
     }
   }
 
+  // เพิ่ม method สำหรับตรวจสอบว่า token ใกล้หมดอายุหรือไม่
   async checkTokenExpiration(token: string): Promise<{
     isExpiring: boolean;
     expiresAt: Date;
@@ -357,10 +236,10 @@ export class AuthService {
       const minutesLeft = Math.floor(timeDiff / (1000 * 60));
 
       return {
-        isExpiring: minutesLeft <= 15,
+        isExpiring: minutesLeft <= 15, // เตือนเมื่อเหลือ 15 นาที
         expiresAt,
         minutesLeft,
-        shouldRefresh: minutesLeft <= 5,
+        shouldRefresh: minutesLeft <= 5, // ควร refresh เมื่อเหลือ 5 นาที
       };
     } catch (error) {
       return {
@@ -371,4 +250,4 @@ export class AuthService {
       };
     }
   }
-}
+} 
