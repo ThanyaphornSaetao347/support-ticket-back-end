@@ -19,22 +19,6 @@ import { JwtAuthGuard } from '../auth/jwt_auth.guard'; // สร้าง guard 
 export class HtmlToPdfController {
   constructor(private readonly htmlToPdfService: HtmlToPdfService) {}
 
-  @Get('test')
-  async testEndpoint() {
-    return { message: 'PDF service is working!', timestamp: new Date() };
-  }
-
-  @Post('test-html')
-  async testHtml(@Body() data: HtmlToPdfDto, @Res() res: Response) {
-    try {
-      const htmlContent = this.htmlToPdfService.generateHtmlTemplate(data);
-      res.set('Content-Type', 'text/html');
-      res.send(htmlContent);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
-  }
-
   @Post('generate')
   async generatePdf(
     @Body() data: HtmlToPdfDto,

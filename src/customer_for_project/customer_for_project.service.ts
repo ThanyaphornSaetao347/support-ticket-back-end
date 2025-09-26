@@ -20,86 +20,86 @@ export class CustomerForProjectService {
   ) { }
 
   async create(createDto: CreateCustomerForProjectDto) {
-  // ตรวจสอบ project
-  const project = await this.projectRepository.findOneBy({ id: createDto.project_id });
-  if (!project) {
-    return { code: '0', status: false, message: 'ไม่พบข้อมูลโปรเจค', data: null };
-  }
-
-  // ตรวจสอบ customer
-  const customer = await this.customerRepository.findOneBy({ id: createDto.customer_id });
-  if (!customer) {
-    return { code: '0', status: false, message: 'ไม่พบข้อมูลลูกค้า', data: null };
-  }
-
-  const savedRecords: CustomerForProject[] = [];
-
-  for (const user of createDto.assigned_users) {
-    // ตรวจสอบซ้ำ
-    const existing = await this.customerForProjectRepository.findOne({
-      where: {
-        customerId: createDto.customer_id,
-        projectId: createDto.project_id,
-        userId: user.user_id,
-        isenabled: true,
-      },
-    });
-
-    if (existing) {
-      // ข้าม user ที่ซ้ำ
-      continue;
+    // ตรวจสอบ project
+    const project = await this.projectRepository.findOneBy({ id: createDto.project_id });
+    if (!project) {
+      return { code: '0', status: false, message: 'ไม่พบข้อมูลโปรเจค', data: null };
     }
 
-    const customerForProject = new CustomerForProject();
-    customerForProject.customerId = createDto.customer_id;
-    customerForProject.projectId = createDto.project_id;
-    customerForProject.userId = user.user_id;
-    customerForProject.create_by = createDto.create_by;
-    customerForProject.update_by = createDto.update_by;
-    customerForProject.isenabled = true;
+    // ตรวจสอบ customer
+    const customer = await this.customerRepository.findOneBy({ id: createDto.customer_id });
+    if (!customer) {
+      return { code: '0', status: false, message: 'ไม่พบข้อมูลลูกค้า', data: null };
+    }
 
-    const saved = await this.customerForProjectRepository.save(customerForProject);
-    savedRecords.push(saved);
+    const savedRecords: CustomerForProject[] = [];
+
+    for (const user of createDto.assigned_users) {
+      // ตรวจสอบซ้ำ
+      const existing = await this.customerForProjectRepository.findOne({
+        where: {
+          customerId: createDto.customer_id,
+          projectId: createDto.project_id,
+          userId: user.user_id,
+          isenabled: true,
+        },
+      });
+
+      if (existing) {
+        // ข้าม user ที่ซ้ำ
+        continue;
+      }
+
+      const customerForProject = new CustomerForProject();
+      customerForProject.customerId = createDto.customer_id;
+      customerForProject.projectId = createDto.project_id;
+      customerForProject.userId = user.user_id;
+      customerForProject.create_by = createDto.create_by;
+      customerForProject.update_by = createDto.update_by;
+      customerForProject.isenabled = true;
+
+      const saved = await this.customerForProjectRepository.save(customerForProject);
+      savedRecords.push(saved);
+    }
+
+    return {
+      code: '2',
+      status: true,
+      message: 'สร้างข้อมูลสำเร็จ',
+      data: savedRecords,
+    };
   }
 
-  return {
-    code: '2',
-    status: true,
-    message: 'สร้างข้อมูลสำเร็จ',
-    data: savedRecords,
-  };
-}
-
   async getCFPdata() {
-  const result = await this.customerRepository
-    .createQueryBuilder('c')
-    .leftJoin('customer_for_project', 'cfp', 'cfp.customer_id = c.id AND cfp.isenabled = true')
-    .leftJoin('project', 'p', 'p.id = cfp.project_id')
-    .leftJoin('users_allow_role', 'uar', 'uar.user_id = cfp.user_id')
-    .leftJoin('users', 'u', 'u.id = uar.user_id')
-    .leftJoin(
-      'ticket',
-      't',
-      't.project_id = p.id AND t.status_id = :openStatusId'
-    )
-    .select([
-      'c.id as customer_id',
-      'c.name as customer_name',
-      'c.email as customer_email',
-      'c.telephone as customer_phone',
-      'p.id as project_id',
-      'p.name as project_name',
-      'p.status as project_status',
-      'COUNT(DISTINCT cfp.project_id) as project_count',
-      'COUNT(DISTINCT cfp.user_id) as user_count',
-      'COUNT(DISTINCT t.id) as open_ticket_count',
-      "ARRAY_AGG(DISTINCT u.firstname || ' ' || u.lastname) as assigned_users",
-    ])
-    .setParameter('openStatusId', 2)
-    .groupBy(
-      'c.id, c.name, c.email, c.telephone, p.id, p.name, p.status'
-    )
-    .getRawMany();
+    const result = await this.customerRepository
+      .createQueryBuilder('c')
+      .leftJoin('customer_for_project', 'cfp', 'cfp.customer_id = c.id AND cfp.isenabled = true')
+      .leftJoin('project', 'p', 'p.id = cfp.project_id')
+      .leftJoin('users_allow_role', 'uar', 'uar.user_id = cfp.user_id')
+      .leftJoin('users', 'u', 'u.id = uar.user_id')
+      .leftJoin(
+        'ticket',
+        't',
+        't.project_id = p.id AND t.status_id = :openStatusId'
+      )
+      .select([
+        'c.id as customer_id',
+        'c.name as customer_name',
+        'c.email as customer_email',
+        'c.telephone as customer_phone',
+        'p.id as project_id',
+        'p.name as project_name',
+        'p.status as project_status',
+        'COUNT(DISTINCT cfp.project_id) as project_count',
+        'COUNT(DISTINCT cfp.user_id) as user_count',
+        'COUNT(DISTINCT t.id) as open_ticket_count',
+        "ARRAY_AGG(DISTINCT u.firstname || ' ' || u.lastname) as assigned_users",
+      ])
+      .setParameter('openStatusId', 2)
+      .groupBy(
+        'c.id, c.name, c.email, c.telephone, p.id, p.name, p.status'
+      )
+      .getRawMany();
 
     // 👉 Group ตาม customer_id
     const customersMap = new Map<number, any>();

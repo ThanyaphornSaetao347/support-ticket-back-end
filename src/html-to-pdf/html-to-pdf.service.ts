@@ -169,6 +169,7 @@ export class HtmlToPdfService {
       overflow: hidden;
       border-radius: 8px;
       margin-top: 5px;
+      background-color: white;
     }
 
     .attachment-box img {
