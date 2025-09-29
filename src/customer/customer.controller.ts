@@ -11,6 +11,7 @@ import { RequireAnyAction } from '../permission/permission.decorator';
 export class CustomerController {
   constructor(private readonly customerService: CustomerService) { }
 
+  // use this code for create customer
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('manage_customer')
   @Post('customer')
@@ -26,6 +27,7 @@ export class CustomerController {
     return this.customerService.create(createCustomerDto, userId);
   }
 
+  // use this code for get data of customer ecth name or address
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('manage_customer')
   @Get('get_customer_data')
@@ -33,36 +35,14 @@ export class CustomerController {
     return this.customerService.getCustomer()
   }
 
+  // use thid code for get all customer to show in drop down in customer for project page
   @UseGuards(JwtAuthGuard)
   @Get('get_all_customer')
-  findAll() {
-    return this.customerService.findAll();
+  findAllcustomer() {
+    return this.customerService.getAllCustomer();
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('my-customers')
-  findMyCustomers(@Request() req) {
-    if (!req || !req.user) {
-      throw new Error('Unauthorized: no user in request');
-    }
-    const userId = req.user.id || req.user.sub || req.user.userId;
-    return this.customerService.findCustomersByUserId(userId);
-  }
-
-  // ใน customer.controller.ts
-  @Get('getOne/:id')
-  findOne(@Param('id') rawId: string) {
-    console.log('Customer Controller received ID:', rawId);
-
-    const id = parseInt(rawId, 10);
-
-    if (isNaN(id)) {
-      throw new BadRequestException(`Customer ID must be a valid number, received: "${rawId}"`);
-    }
-
-    return this.customerService.findOne(id);
-  }
-
+  // use this code for update customer data
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('manage_customer')
   @Patch('customer/update/:id')
@@ -82,6 +62,7 @@ export class CustomerController {
     return this.customerService.update(+id, updateCustomerDto, userId);
   }
 
+  // use this code for delete customer
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('manage_customer')
   @Delete('customer/delete/:id')

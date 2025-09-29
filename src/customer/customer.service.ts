@@ -65,53 +65,32 @@ export class CustomerService {
     }
   }
 
-  async findAll() {
-    const customers = await this.customerRepository.find({
-      where: { isenabled: true },
-      order: { name: 'ASC' }
-    });
+  async getAllCustomer() {
+    try {
+      const customer = await this.customerRepository
+        .createQueryBuilder('c')
+        .select([
+          'c.id as id',
+          'c.name as name'
+        ])
+        .groupBy('c.id')
+        .getRawMany();
 
-    return {
-      code: 1,
-      status: true,
-      message: 'Success',
-      data: customers
-    };
-  }
-
-  async findOne(id: number) {
-    // เพิ่มการตรวจสอบ input
-    console.log('CustomerService.findOne received:', id, typeof id);
-
-    // ตรวจสอบว่า id ถูกต้องหรือไม่
-    if (id === null || id === undefined || isNaN(id) || !Number.isInteger(Number(id))) {
+      return {
+        code: 1,
+        status: true,
+        message: 'Success',
+        data: customer,
+      };
+    } catch (error) {
+      console.error('Error in getAllProjects:', error);
       return {
         code: 0,
         status: false,
-        message: `Invalid customer ID: ${id}`,
-        data: null
+        message: 'Failed to fetch all projects',
+        error: error.message,
       };
     }
-
-    const customer = await this.customerRepository.findOne({
-      where: { id: Number(id), isenabled: true }  // แปลงเป็น Number ให้แน่ใจ
-    });
-
-    if (!customer) {
-      return {
-        code: 0,
-        status: false,
-        message: 'ไม่พบข้อมูลลูกค้า',
-        data: null
-      };
-    }
-
-    return {
-      code: 1,
-      status: true,
-      message: 'Success',
-      data: customer
-    };
   }
 
   async update(id: number, updateCustomerDto: UpdateCustomerDto, userId: number) {
@@ -188,32 +167,6 @@ export class CustomerService {
       code: 1,
       status: true,
       message: 'ลบข้อมูลลูกค้าสำเร็จ',
-    };
-  }
-
-  async findCustomersByUserId(userId: number) {
-    const customers = await this.customerRepository
-      .createQueryBuilder('c')
-      .innerJoin('customer_for_project', 'cfp', 'cfp.customer_id = c.id')
-      .where('cfp.user_id = :userId', { userId })
-      .andWhere('cfp.isenabled = :isEnabled', { isEnabled: true })
-      .andWhere('c.isenabled = :isEnabled', { isEnabled: true })
-      .select([
-        'c.id',
-        'c.name',
-        'c.address',
-        'c.telephone',
-        'c.email'
-      ])
-      .distinct(true)
-      .orderBy('c.name', 'ASC')
-      .getRawMany();
-
-    return {
-      code: 1,
-      status: true,
-      message: 'Success',
-      data: customers
     };
   }
 }

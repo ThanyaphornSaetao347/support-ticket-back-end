@@ -1,11 +1,19 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Project } from './entities/project.entity';
 import { CustomerForProject } from '../customer_for_project/entities/customer-for-project.entity';
 import { Customer } from '../customer/entities/customer.entity';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { PermissionService } from '../permission/permission.service';
+
+interface ProjectRow {
+  project_id: number;
+  project_name: string;
+  customer_id?: number;     // optional เผื่อกรณีไม่มี customer
+  customer_name?: string;
+}
 
 @Injectable()
 export class ProjectService {
@@ -16,8 +24,8 @@ export class ProjectService {
     @InjectRepository(CustomerForProject)
     private customerForProjectRepository: Repository<CustomerForProject>,
 
-    @InjectRepository(Customer)
-    private customerRepository: Repository<Customer>,
+    private readonly permissionService: PermissionService,
+    private readonly dataSource: DataSource,
   ) { }
 
   // เพิ่มเมธอดสร้างโปรเจคใหม่
@@ -55,30 +63,58 @@ export class ProjectService {
     }
   }
 
+  async checkUserPermissions(userId: number): Promise<number[]> {
+    const rows = await this.dataSource.query(
+      'SELECT role_id FROM users_allow_role WHERE user_id = $1',
+      [userId]
+    );
+    // rows = [{ role_id: 1 }, { role_id: 2 }, ...]
+    const roleIds = rows.map(r => r.role_id);
+    return roleIds;
+  }
 
   async getProjectsForUser(userId: number) {
     try {
       console.log('Getting projects for user:', userId);
 
-      // ใช้ ORM QueryBuilder แทน raw query
-      const results = await this.customerForProjectRepository
-        .createQueryBuilder('cfp')
-        .innerJoin('cfp.project', 'p')
-        .innerJoin('cfp.customer', 'c')
-        .where('cfp.user_id = :userId', { userId })
-        .andWhere('cfp.isenabled = :enabled', { enabled: true })
-        .andWhere('p.isenabled = :projectEnabled', { projectEnabled: true })
-        .select([
-          'p.id as project_id',
-          'p.name as project_name',
-          'c.id as customer_id',
-          'c.name as customer_name'
-        ])
-        .getRawMany();
+      // check permission can see all project
+      const userPermissions: number[] = await this.checkUserPermissions(userId);
+      const canViewAllProject = await this.permissionService.canReadAllProject(
+        userId,
+        userPermissions,
+      );
 
-      console.log('Query result:', results);
+      let projects: ProjectRow[] = [];
 
-      if (results.length === 0) {
+      if (canViewAllProject) {
+        // 🔑 เห็นทุกโปรเจค → ไม่สน customer
+        projects = await this.projectRepository
+          .createQueryBuilder('p')
+          .where('p.isenabled = :enabled', { enabled: true })
+          .select([
+            'p.id as project_id',
+            'p.name as project_name',
+          ])
+          .getRawMany<ProjectRow>();
+      } else {
+        // 🔒 เห็นเฉพาะโปรเจคที่มีสิทธิ์ และ join customer
+        projects = await this.customerForProjectRepository
+          .createQueryBuilder('cfp')
+          .innerJoin('cfp.project', 'p')
+          .innerJoin('cfp.customer', 'c')
+          .andWhere('cfp.isenabled = :enabled', { enabled: true })
+          .andWhere('p.isenabled = :projectEnabled', { projectEnabled: true })
+          .andWhere('cfp.user_id = :userId', { userId })
+          .select([
+            'p.id as project_id',
+            'p.name as project_name',
+            'c.id as customer_id',
+            'c.name as customer_name',
+          ])
+          .getRawMany<ProjectRow>();
+      }
+
+      if (projects.length === 0) {
         return {
           code: 1,
           status: false,
@@ -87,12 +123,19 @@ export class ProjectService {
         };
       }
 
-      // จัดรูปแบบข้อมูลให้เป็น dropdown format
-      const formattedData = results.map(row => ({
+      // กันข้อมูลซ้ำโดย project_id
+      const uniqueProjects = new Map<number, ProjectRow>();
+      projects.forEach(p => {
+        if (!uniqueProjects.has(p.project_id)) {
+          uniqueProjects.set(p.project_id, p);
+        }
+      });
+
+      const formattedData = Array.from(uniqueProjects.values()).map(row => ({
         id: row.project_id,
         name: row.project_name,
-        customer_id: row.customer_id,
-        customer_name: row.customer_name,
+        customer_id: row.customer_id ?? null,
+        customer_name: row.customer_name ?? null,
       }));
 
       return {
@@ -142,34 +185,6 @@ export class ProjectService {
         status: false,
         message: 'เกิดข้อผิดพลาดในการดึงข้อมูลโปรเจค',
         data: []
-      };
-    }
-  }
-
-  async getAllProjects() {
-    try {
-      const project = await this.projectRepository
-        .createQueryBuilder('p')
-        .select([
-          'p.id as id',
-          'p.name as name'
-        ])
-        .groupBy('p.id')
-        .getRawMany();
-
-      return {
-        code: 1,
-        status: true,
-        message: 'Success',
-        data: project,
-      };
-    } catch (error) {
-      console.error('Error in getAllProjects:', error);
-      return {
-        code: 0,
-        status: false,
-        message: 'Failed to fetch all projects',
-        error: error.message,
       };
     }
   }

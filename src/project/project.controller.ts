@@ -10,6 +10,7 @@ import { RequireAnyAction } from '../permission/permission.decorator';
 export class ProjectController {
   constructor(private projectService: ProjectService) {}
 
+  //  ใช้โค้ดนี้เพื่อดึงและส่งข้อมูลของ project
   @UseGuards(JwtAuthGuard)
   @Post('getProjectDDL')
   async getProjectDDL(@Request() req) {
@@ -25,6 +26,7 @@ export class ProjectController {
     }
   }
 
+  // ใช้โค้ดนี้เพื่อ create project
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('create_project')
   @Post('projects')
@@ -38,34 +40,14 @@ export class ProjectController {
     return this.projectService.createProject(createProjectDto);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('projects')
-  async getProjects(@Request() req) {
-    console.log('User in request:', req.user);
-    const userId = req.user.id || req.user.sub || req.user.userId;
-    return this.projectService.getProjectsForUser(userId);
-  }
-
-  // เส้นดึง project พร้อมกับ status
+  // เส้นดึง project พร้อมกับ status true false
   @UseGuards(JwtAuthGuard)
   @Get('get_all_project')
   async getProjectAll() {
     return await this.projectService.getProjects()
   }
 
-  // ใช้เป็น ddl ใน customer for project
-  @UseGuards(JwtAuthGuard)
-  @Get('projects/all')
-  async getAllProjects() {
-    return this.projectService.getAllProjects();
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get('projects/:id')
-  async getProjectById(@Param('id', ParseIntPipe) id: number) {
-    return this.projectService.getProjectById(id);
-  }
-
+  // use this code for update project
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('create_project')
   @Patch('project/update/:id')
@@ -76,6 +58,7 @@ export class ProjectController {
     return this.projectService.updateProject(id, updateProjectDto);
   }
 
+  // use this code for delete project
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('create_project')
   @Delete('project/delete/:id')
