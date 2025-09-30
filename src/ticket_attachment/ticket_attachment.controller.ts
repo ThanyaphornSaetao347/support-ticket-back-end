@@ -118,18 +118,16 @@ export class TicketAttachmentController {
     private readonly attachmentService: AttachmentService,
     private readonly permissionService: PermissionService,
   ) { }
-
+  
   // ✅ แก้ไข endpoint เดิมให้รองรับไฟล์ทุกประเภท สำหรับดึงไฟล์แนปจาก issue_attachments
   @Get('images/issue_attachment/:id')
-  // @UseGuards(JwtAuthGuard)
   async getIssueAttachmentImage(
     @Param('id') id: number,
     @Res() res: Response
   ) {
     try {
-      console.log(`📎 Getting issue attachment file with ID: ${id}`);
+      console.log(`🔎 Getting issue attachment file with ID: ${id}`);
 
-      // ✅ หา attachment record ใน database
       const attachment = await this.attachmentService.findById(id);
 
       if (!attachment) {
@@ -137,13 +135,18 @@ export class TicketAttachmentController {
         throw new NotFoundException('Attachment not found');
       }
 
-      console.log(`📄 Found attachment: ${JSON.stringify(attachment)}`);
+      // ✅ ตรวจสอบว่าเป็นไฟล์ประเภท reporter จริงหรือไม่
+      if (attachment.type !== 'reporter') {
+        console.log(`❌ Attachment ID ${id} is not a reporter type (type: ${attachment.type})`);
+        throw new BadRequestException('This attachment is not an issue attachment');
+      }
 
-      // ✅ สร้าง path ไปยังไฟล์ (ใช้ filename จาก database)
+      console.log(`📄 Found reporter attachment: ${JSON.stringify(attachment)}`);
+
+      // ✅ ใช้ folder issue_attachment
       const filePath = path.join(process.cwd(), 'uploads', 'issue_attachment', attachment.filename);
-      console.log(`📁 Looking for file at: ${filePath}`);
+      console.log(`🔍 Looking for file at: ${filePath}`);
 
-      // ✅ ตรวจสอบว่าไฟล์มีอยู่จริง
       try {
         await stat(filePath);
         console.log(`✅ File found: ${filePath}`);
@@ -152,13 +155,10 @@ export class TicketAttachmentController {
         throw new NotFoundException('File not found on disk');
       }
 
-      // ✅ อ่านไฟล์
       const fileBuffer = await readFile(filePath);
       console.log(`📖 File read successfully, size: ${fileBuffer.length} bytes`);
 
-      // ✅ กำหนด Content-Type ตามประเภทไฟล์
       const contentTypes = {
-        // Images
         'jpg': 'image/jpeg',
         'jpeg': 'image/jpeg',
         'png': 'image/png',
@@ -166,7 +166,6 @@ export class TicketAttachmentController {
         'webp': 'image/webp',
         'bmp': 'image/bmp',
         'tiff': 'image/tiff',
-        // Documents
         'pdf': 'application/pdf',
         'doc': 'application/msword',
         'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -174,13 +173,11 @@ export class TicketAttachmentController {
         'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'ppt': 'application/vnd.ms-powerpoint',
         'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        // Text files
         'txt': 'text/plain',
         'csv': 'text/csv',
         'json': 'application/json',
         'xml': 'application/xml',
         'rtf': 'application/rtf',
-        // Archives
         'zip': 'application/zip',
         'rar': 'application/x-rar-compressed',
         '7z': 'application/x-7z-compressed'
@@ -189,19 +186,18 @@ export class TicketAttachmentController {
       const extension = attachment.extension.toLowerCase();
       const contentType = contentTypes[extension] || 'application/octet-stream';
 
-      // ✅ ตรวจสอบว่าเป็นไฟล์ที่ควรแสดง inline หรือ download
       const inlineExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'pdf', 'txt', 'json', 'xml'];
       const disposition = inlineExtensions.includes(extension) ? 'inline' : 'attachment';
 
-      // ✅ ส่งไฟล์กลับ
       res.set({
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600', // Cache 1 ชั่วโมง
+        'Cache-Control': 'public, max-age=3600',
         'Content-Disposition': `${disposition}; filename="${attachment.filename}"`,
         'Content-Length': fileBuffer.length.toString(),
         'X-Attachment-ID': id,
         'X-Ticket-ID': attachment.ticket_id,
-        'X-File-Extension': extension
+        'X-File-Extension': extension,
+        'X-Attachment-Type': attachment.type
       });
 
       res.send(fileBuffer);
@@ -220,15 +216,13 @@ export class TicketAttachmentController {
 
   // ✅ แก้ไข endpoint เดิมให้รองรับไฟล์ทุกประเภท สำหรับดึงไฟล์แนปจาก fix_issue
   @Get('images/fix_issue/:id')
-  // @UseGuards(JwtAuthGuard)
   async getFixIssueAttachmentImage(
     @Param('id') id: number,
     @Res() res: Response
   ) {
     try {
-      console.log(`📎 Getting fix issue attachment file with ID: ${id}`);
+      console.log(`🔎 Getting fix issue attachment file with ID: ${id}`);
 
-      // ✅ หา attachment record ใน database
       const attachment = await this.attachmentService.findById(id);
 
       if (!attachment) {
@@ -236,13 +230,18 @@ export class TicketAttachmentController {
         throw new NotFoundException('Attachment not found');
       }
 
-      console.log(`📄 Found attachment: ${JSON.stringify(attachment)}`);
+      // ✅ ตรวจสอบว่าเป็นไฟล์ประเภท supporter จริงหรือไม่
+      if (attachment.type !== 'supporter') {
+        console.log(`❌ Attachment ID ${id} is not a supporter type (type: ${attachment.type})`);
+        throw new BadRequestException('This attachment is not a fix issue attachment');
+      }
 
-      // ✅ สร้าง path ไปยังไฟล์ (ใช้ filename จาก database)
+      console.log(`📄 Found supporter attachment: ${JSON.stringify(attachment)}`);
+
+      // ✅ ใช้ folder fix_issue
       const filePath = path.join(process.cwd(), 'uploads', 'fix_issue', attachment.filename);
-      console.log(`📁 Looking for file at: ${filePath}`);
+      console.log(`🔍 Looking for file at: ${filePath}`);
 
-      // ✅ ตรวจสอบว่าไฟล์มีอยู่จริง
       try {
         await stat(filePath);
         console.log(`✅ File found: ${filePath}`);
@@ -251,13 +250,10 @@ export class TicketAttachmentController {
         throw new NotFoundException('File not found on disk');
       }
 
-      // ✅ อ่านไฟล์
       const fileBuffer = await readFile(filePath);
       console.log(`📖 File read successfully, size: ${fileBuffer.length} bytes`);
 
-      // ✅ กำหนด Content-Type ตามประเภทไฟล์
       const contentTypes = {
-        // Images
         'jpg': 'image/jpeg',
         'jpeg': 'image/jpeg',
         'png': 'image/png',
@@ -265,7 +261,6 @@ export class TicketAttachmentController {
         'webp': 'image/webp',
         'bmp': 'image/bmp',
         'tiff': 'image/tiff',
-        // Documents
         'pdf': 'application/pdf',
         'doc': 'application/msword',
         'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -273,13 +268,11 @@ export class TicketAttachmentController {
         'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'ppt': 'application/vnd.ms-powerpoint',
         'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        // Text files
         'txt': 'text/plain',
         'csv': 'text/csv',
         'json': 'application/json',
         'xml': 'application/xml',
         'rtf': 'application/rtf',
-        // Archives
         'zip': 'application/zip',
         'rar': 'application/x-rar-compressed',
         '7z': 'application/x-7z-compressed'
@@ -288,19 +281,18 @@ export class TicketAttachmentController {
       const extension = attachment.extension.toLowerCase();
       const contentType = contentTypes[extension] || 'application/octet-stream';
 
-      // ✅ ตรวจสอบว่าเป็นไฟล์ที่ควรแสดง inline หรือ download
       const inlineExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'pdf', 'txt', 'json', 'xml'];
       const disposition = inlineExtensions.includes(extension) ? 'inline' : 'attachment';
 
-      // ✅ ส่งไฟล์กลับ
       res.set({
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600', // Cache 1 ชั่วโมง
+        'Cache-Control': 'public, max-age=3600',
         'Content-Disposition': `${disposition}; filename="${attachment.filename}"`,
         'Content-Length': fileBuffer.length.toString(),
         'X-Attachment-ID': id,
         'X-Ticket-ID': attachment.ticket_id,
-        'X-File-Extension': extension
+        'X-File-Extension': extension,
+        'X-Attachment-Type': attachment.type
       });
 
       res.send(fileBuffer);
@@ -308,63 +300,6 @@ export class TicketAttachmentController {
 
     } catch (error) {
       console.error(`💥 Error getting file ${id}:`, error.message);
-
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
-        throw error;
-      }
-
-      throw new NotFoundException('File not found');
-    }
-  }
-
-  // 🆕 เพิ่ม endpoint สำหรับดาวน์โหลดไฟล์ (force download)
-  @Get('download/issue_attachment/:id')
-  // @UseGuards(JwtAuthGuard)
-  async downloadIssueAttachment(
-    @Param('id') id: number,
-    @Res() res: Response
-  ) {
-    try {
-      console.log(`⬇️ Downloading issue attachment with ID: ${id}`);
-
-      // ✅ หา attachment record ใน database
-      const attachment = await this.attachmentService.findById(id);
-
-      if (!attachment) {
-        console.log(`❌ Attachment ID ${id} not found in database`);
-        throw new NotFoundException('Attachment not found');
-      }
-
-      console.log(`📄 Found attachment for download: ${JSON.stringify(attachment)}`);
-
-      // ✅ สร้าง path ไปยังไฟล์
-      const filePath = path.join(process.cwd(), 'uploads', 'issue_attachment', attachment.filename);
-      console.log(`📁 Looking for file at: ${filePath}`);
-
-      // ✅ ตรวจสอบว่าไฟล์มีอยู่จริง
-      try {
-        const stats = await stat(filePath);
-        console.log(`✅ File found: ${filePath}, size: ${stats.size} bytes`);
-
-        // ✅ ใช้ res.download() สำหรับการดาวน์โหลด
-        res.download(filePath, attachment.filename, (err) => {
-          if (err) {
-            console.error(`❌ Download error for file ${id}:`, err);
-            if (!res.headersSent) {
-              throw new NotFoundException('File download failed');
-            }
-          } else {
-            console.log(`✅ File downloaded successfully: ${attachment.filename}`);
-          }
-        });
-
-      } catch (error) {
-        console.log(`❌ File not found: ${filePath}`);
-        throw new NotFoundException('File not found on disk');
-      }
-
-    } catch (error) {
-      console.error(`💥 Error downloading file ${id}:`, error.message);
 
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
@@ -386,7 +321,6 @@ export class TicketAttachmentController {
         if (!ticket_id) return cb(new BadRequestException('ticket_id is required'), '');
 
         try {
-          // ✅ ใช้ฟังก์ชันที่แก้ไขแล้ว
           const newFilename = await getNextFilenameWithCounter('./uploads/issue_attachment', ticket_id, file.originalname);
           cb(null, newFilename);
         } catch (error) {
@@ -402,40 +336,16 @@ export class TicketAttachmentController {
         size: file.size
       });
 
-      // รายการ MIME types ที่อนุญาต
       const allowedMimeTypes = [
-        // Images
-        'image/jpeg',
-        'image/jpg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'image/bmp',
-        'image/tiff',
-        // Documents
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-powerpoint',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        // Text files
-        'text/plain',
-        'text/csv',
-        'application/json',
-        // Archives
-        'application/zip',
-        'application/x-rar-compressed',
-        'application/x-7z-compressed',
-        'application/x-zip-compressed',
-        // Other common formats
-        'application/rtf',
-        'application/xml',
-        'text/xml'
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff',
+        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'text/plain', 'text/csv', 'application/json',
+        'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed', 'application/x-zip-compressed',
+        'application/rtf', 'application/xml', 'text/xml'
       ];
 
-      // ตรวจสอบ extension เพิ่มเติม (เพื่อความแน่ใจ)
       const allowedExtensions = [
         '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff',
         '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
@@ -464,7 +374,7 @@ export class TicketAttachmentController {
       }
     },
     limits: {
-      fileSize: 10 * 1024 * 1024, // เพิ่มเป็น 10MB
+      fileSize: 10 * 1024 * 1024,
     }
   }))
   async updateAttachment(
@@ -473,38 +383,35 @@ export class TicketAttachmentController {
     @Body('project_id') project_id: string,
     @Body('categories_id') categories_id: string,
     @Body('issue_description') issue_description: string,
-    @Body('type') type: string = 'reporter',
     @Request() req: any
   ) {
     try {
-      // ตรวจสอบว่ามีไฟล์หรือไม่
       if (!files || files.length === 0) {
         throw new BadRequestException('No files uploaded');
       }
 
-      // ตรวจสอบ ticket_id
       if (!ticket_id) {
         throw new BadRequestException('ticket_id is required');
       }
 
+      // ✅ กำหนด type จาก role_id
+      const attachmentType = 'reporter';
+      console.log(`User role_id: ${req.user?.role_id}, Attachment type: ${attachmentType} (issue attachment)`);
+
       const uploadedFiles: any[] = [];
       const errors: any[] = [];
 
-      // Process แต่ละไฟล์
       for (const file of files) {
         try {
-          // ประมวลผลไฟล์
           const processedFile = await this.processImage(file);
 
-          // เรียกใช้ AttachmentService ตามที่ต้องการ
           const attachment = await this.attachmentService.create({
-            ticket_id: parseInt(ticket_id), // แปลงเป็น number
-            type,
-            file: file, // ส่ง Express.Multer.File object ตรงๆ
+            ticket_id: parseInt(ticket_id),
+            type: attachmentType, // ✅ ใช้ type ที่กำหนดจาก role_id
+            file: file,
             create_by: req.user.id
           });
 
-          // เก็บข้อมูลเพิ่มเติม (project_id, category_id, issue_description) ไว้ใช้ต่อ
           if (project_id || categories_id || issue_description) {
             console.log('Additional data to process:', {
               project_id,
@@ -512,19 +419,17 @@ export class TicketAttachmentController {
               issue_description,
               attachment_id: attachment.id
             });
-            // สามารถเพิ่ม logic เพื่อบันทึกข้อมูลเพิ่มเติมในตารางอื่นได้ที่นี่
           }
 
           uploadedFiles.push({
             id: attachment.id,
-            filename: attachment.filename, // ใช้ filename จาก database
+            filename: attachment.filename,
             original_name: file.originalname,
             file_size: processedFile.size,
-            file_url: `/images/issue_attachment/${attachment.id}`, // ✅ ใช้ endpoint เดิม
+            file_url: `/images/issue_attachment/${attachment.id}`,
             extension: attachment.extension
           });
 
-          // ลบไฟล์ temp ถ้าจำเป็น
           if (file.filename !== processedFile.filename) {
             await this.deleteFile(file.path);
           }
@@ -532,7 +437,6 @@ export class TicketAttachmentController {
         } catch (error) {
           console.error('File processing error:', error);
 
-          // ลบไฟล์ที่ upload ไว้แล้วถ้าเกิดข้อผิดพลาด
           if (file.path) {
             await this.deleteFile(file.path);
           }
@@ -544,7 +448,6 @@ export class TicketAttachmentController {
         }
       }
 
-      // ส่งผลลัพธ์
       const response = {
         success: uploadedFiles.length > 0,
         message: `Successfully uploaded ${uploadedFiles.length} file(s)`,
@@ -570,195 +473,6 @@ export class TicketAttachmentController {
       throw new BadRequestException({
         message: 'Failed to upload any files',
         errors: errors
-      });
-
-    } catch (error) {
-      console.error('Upload error:', error);
-
-      // ทำความสะอาดไฟล์ที่อัปโหลดไว้แล้วถ้าเกิดข้อผิดพลาด
-      if (files && files.length > 0) {
-        for (const file of files) {
-          if (file.path) {
-            await this.deleteFile(file.path);
-          }
-        }
-      }
-      throw error;
-    }
-  }
-
-  // ใชเสำหรับการการอัพเดตไฟล์จากการแก้ไขทิกเก็ตของลูกค้า
-  @Patch('api/update_attachment')
-  @UseGuards(JwtAuthGuard, PermissionGuard)
-  @RequireAnyAction('create_ticket')
-  @UseInterceptors(FilesInterceptor('files', 5, {
-    storage: diskStorage({
-      destination: './uploads/issue_attachment', // ✅ แก้ไข: ต้องเป็น issue_attachment ไม่ใช่ fix_issue
-      filename: async (req, file, cb) => {
-        const ticket_id = req.body?.ticket_id || req.query?.ticket_id;
-        if (!ticket_id) return cb(new BadRequestException('ticket_id is required'), '');
-
-        try {
-          // ✅ ใช้ path ที่ถูกต้อง
-          const newFilename = await getNextFilenameWithCounter('./uploads/issue_attachment', ticket_id, file.originalname);
-          cb(null, newFilename);
-        } catch (error) {
-          cb(error, '');
-        }
-      }
-    }),
-    fileFilter: (req, file, cb) => {
-      console.log('File being uploaded:', {
-        fieldname: file.fieldname,
-        originalname: file.originalname,
-        mimetype: file.mimetype,
-        size: file.size
-      });
-
-      // รายการ MIME types ที่อนุญาต
-      const allowedMimeTypes = [
-        // Images
-        'image/jpeg',
-        'image/jpg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'image/bmp',
-        'image/tiff',
-        // Documents
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-powerpoint',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        // Text files
-        'text/plain',
-        'text/csv',
-        'application/json',
-        // Archives
-        'application/zip',
-        'application/x-rar-compressed',
-        'application/x-7z-compressed',
-        'application/x-zip-compressed',
-        // Other common formats
-        'application/rtf',
-        'application/xml',
-        'text/xml'
-      ];
-
-      // ตรวจสอบ extension เพิ่มเติม (เพื่อความแน่ใจ)
-      const allowedExtensions = [
-        '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff',
-        '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-        '.txt', '.csv', '.json', '.xml', '.rtf',
-        '.zip', '.rar', '.7z'
-      ];
-
-      const fileExtension = extname(file.originalname).toLowerCase();
-
-      if (allowedMimeTypes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
-        cb(null, true);
-      } else {
-        console.log('File type not allowed:', {
-          mimetype: file.mimetype,
-          extension: fileExtension,
-          filename: file.originalname
-        });
-
-        return cb(
-          new BadRequestException(
-            `File type '${file.mimetype}' with extension '${fileExtension}' is not allowed. ` +
-            `Allowed types: images, PDF, Word, Excel, PowerPoint, text files, and archives.`
-          ),
-          false
-        );
-      }
-    },
-    limits: {
-      fileSize: 10 * 1024 * 1024, // เพิ่มเป็น 10MB
-    }
-  }))
-  async fix_updateAttachment(
-    @UploadedFiles() files: Express.Multer.File[],
-    @Body('ticket_id') ticket_id: string,
-    @Request() req: any,   // ✅ เอาไว้ดึง user id
-  ) {
-    try {
-      if (!files || files.length === 0) {
-        throw new BadRequestException('No files uploaded');
-      }
-
-      if (!ticket_id) {
-        throw new BadRequestException('ticket_id is required');
-      }
-
-      const uploadedFiles: any[] = [];
-      const errors: any[] = [];
-
-      for (const file of files) {
-        try {
-          const processedFile = await this.processImage(file);
-
-          // ✅ ส่ง parameter ครบตาม type definition
-          const attachment = await this.attachmentService.create({
-            ticket_id: parseInt(ticket_id),
-            type: 'reporter',       // fix ค่า default
-            file,                   // multer file
-            create_by: req.user.id, // จาก JWT user
-          });
-
-          uploadedFiles.push({
-            id: attachment.id,
-            filename: attachment.filename,
-            original_name: file.originalname,
-            file_size: processedFile.size,
-            file_url: `/images/issue_attachment/${attachment.id}`,
-            extension: attachment.extension,
-          });
-
-          if (file.filename !== processedFile.filename) {
-            await this.deleteFile(file.path);
-          }
-
-        } catch (error) {
-          console.error('File processing error:', error);
-
-          if (file.path) {
-            await this.deleteFile(file.path);
-          }
-
-          errors.push({
-            filename: file.originalname,
-            error: error.message,
-          });
-        }
-      }
-
-      const response = {
-        success: uploadedFiles.length > 0,
-        message: `Successfully uploaded ${uploadedFiles.length} file(s)`,
-        data: {
-          uploaded_files: uploadedFiles,
-          total_uploaded: uploadedFiles.length,
-          total_files: files.length,
-          errors: errors.length > 0 ? errors : undefined,
-        },
-      };
-
-      if (errors.length === 0) return response;
-
-      if (uploadedFiles.length > 0) {
-        return {
-          ...response,
-          message: `Uploaded ${uploadedFiles.length}/${files.length} files with some errors`,
-        };
-      }
-
-      throw new BadRequestException({
-        message: 'Failed to upload any files',
-        errors: errors,
       });
 
     } catch (error) {
@@ -790,7 +504,6 @@ export class TicketAttachmentController {
         }
 
         try {
-          // ✅ ใช้ฟังก์ชันที่แก้ไขแล้ว
           const newFilename = await getNextFilenameWithCounter('./uploads/fix_issue', ticket_id, file.originalname);
           cb(null, newFilename);
         } catch (error) {
@@ -806,40 +519,16 @@ export class TicketAttachmentController {
         size: file.size
       });
 
-      // รายการ MIME types ที่อนุญาต
       const allowedMimeTypes = [
-        // Images
-        'image/jpeg',
-        'image/jpg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'image/bmp',
-        'image/tiff',
-        // Documents
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-powerpoint',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        // Text files
-        'text/plain',
-        'text/csv',
-        'application/json',
-        // Archives
-        'application/zip',
-        'application/x-rar-compressed',
-        'application/x-7z-compressed',
-        'application/x-zip-compressed',
-        // Other common formats
-        'application/rtf',
-        'application/xml',
-        'text/xml'
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff',
+        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'text/plain', 'text/csv', 'application/json',
+        'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed', 'application/x-zip-compressed',
+        'application/rtf', 'application/xml', 'text/xml'
       ];
 
-      // ตรวจสอบ extension เพิ่มเติม (เพื่อความแน่ใจ)
       const allowedExtensions = [
         '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff',
         '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
@@ -868,13 +557,13 @@ export class TicketAttachmentController {
       }
     },
     limits: {
-      fileSize: 10 * 1024 * 1024, // เพิ่มเป็น 10MB
+      fileSize: 10 * 1024 * 1024,
     }
   }))
   async fix_issue_attachment(
     @UploadedFiles() files: Express.Multer.File[],
     @Body('ticket_id') ticket_id: string,
-    @Request() req: any,   // ✅ เอาไว้ดึง user id
+    @Request() req: any,
   ) {
     try {
       if (!files || files.length === 0) {
@@ -885,6 +574,9 @@ export class TicketAttachmentController {
         throw new BadRequestException('ticket_id is required');
       }
 
+      // ✅ แก้ตรงนี้ - Fix เป็น supporter เสมอ
+      const attachmentType = 'supporter';
+      console.log(`User role_id: ${req.user?.role_id}, Attachment type: ${attachmentType} (fix issue attachment)`);
       const uploadedFiles: any[] = [];
       const errors: any[] = [];
 
@@ -892,12 +584,11 @@ export class TicketAttachmentController {
         try {
           const processedFile = await this.processImage(file);
 
-          // ✅ ส่ง parameter ครบตาม type definition
           const attachment = await this.attachmentService.create({
             ticket_id: parseInt(ticket_id),
-            type: 'reporter',       // fix ค่า default
-            file,                   // multer file
-            create_by: req.user.id, // จาก JWT user
+            type: attachmentType, // ✅ ใช้ type ที่กำหนดจาก role_id
+            file,
+            create_by: req.user.id,
           });
 
           uploadedFiles.push({

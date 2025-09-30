@@ -93,7 +93,15 @@ export class CustomerForProjectService {
         'c.name as customer_name',
         'c.email as customer_email',
         'c.telephone as customer_phone',
-        "ARRAY_AGG(DISTINCT u.firstname || ' ' || u.lastname) as assigned_users",
+        `COALESCE(
+        JSON_AGG(
+          DISTINCT JSONB_BUILD_OBJECT(
+            'cfp_id', cfp.id,
+            'user_id', u.id,
+            'name', u.firstname || ' ' || u.lastname
+          )
+        ) FILTER (WHERE u.id IS NOT NULL), '[]'
+      ) as assigned_users`,
         'COUNT(DISTINCT c.id) as customer_count',
         'COUNT(DISTINCT cfp.user_id) as user_count',
         'COUNT(DISTINCT t.id) as open_ticket_count',
