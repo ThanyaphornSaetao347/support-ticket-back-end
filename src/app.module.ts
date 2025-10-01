@@ -40,6 +40,7 @@ import { PermissionModule } from './permission/permission.module';
 import { APP_GUARD } from '@nestjs/core';
 import { PermissionGuard } from './permission/permission.guard';
 import { HtmlToPdfModule } from './html-to-pdf/html-to-pdf.module';
+import { ExportExcelModule } from './export-excel/export-excel.module';
 
 
 @Module({
@@ -92,7 +93,8 @@ import { HtmlToPdfModule } from './html-to-pdf/html-to-pdf.module';
     SatisfactionModule,
     NotificationModule,
     PermissionModule,
-    HtmlToPdfModule
+    HtmlToPdfModule,
+    ExportExcelModule
   ],
   controllers: [AppController],
   providers: [

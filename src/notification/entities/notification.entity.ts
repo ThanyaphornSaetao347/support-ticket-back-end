@@ -58,7 +58,7 @@ export class Notification {
     user: Users;
 
     @ManyToOne(() => Ticket, { eager: true})
-    @JoinColumn({ name: 'ticket_id' })
+    @JoinColumn({ name: 'ticket_no' })
     ticket: Ticket;
 
     @ManyToOne(() => TicketStatus, { eager: false, nullable: true })

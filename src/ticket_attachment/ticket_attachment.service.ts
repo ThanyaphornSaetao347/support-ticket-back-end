@@ -12,7 +12,7 @@ export class AttachmentService {
   constructor(
     @InjectRepository(TicketAttachment)
     private readonly attachmentRepo: Repository<TicketAttachment>,
-  ) {}
+  ) { }
 
   /**
    * สร้างข้อมูลไฟล์แนบใหม่
@@ -26,12 +26,12 @@ export class AttachmentService {
     // หา extension จาก originalname และจำกัดความยาว
     const extension = extname(data.file.originalname).substring(1); // ตัด . ออก
     const safeExtension = extension.length > 10 ? extension.substring(0, 10) : extension;
-    
+
     // ใช้ filename ที่ส่งมาจาก controller (ที่ปรับแล้ว)
-    const safeFilename = data.file.filename.length > 10 ? 
-      data.file.filename.substring(0, 10) : 
+    const safeFilename = data.file.filename.length > 10 ?
+      data.file.filename.substring(0, 10) :
       data.file.filename;
-    
+
     // สร้าง entity ใหม่
     const attachment = new TicketAttachment();
     attachment.ticket_id = data.ticket_id;
@@ -56,7 +56,7 @@ export class AttachmentService {
    * อัปเดตข้อมูลไฟล์แนบ
    */
   async update(id: number, data: Partial<TicketAttachment>): Promise<TicketAttachment | null> {
-    await this.attachmentRepo.update(id, {...data});
+    await this.attachmentRepo.update(id, { ...data });
     return this.attachmentRepo.findOne({ where: { id } });
   }
 
@@ -72,20 +72,20 @@ export class AttachmentService {
 
   // ✅ ค้นหา attachment ที่เป็นรูปภาพด้วย ID
   async findImageById(id: number) {
-  return await this.attachmentRepo
-    .createQueryBuilder('a')
-    .select([
-      'a.id',
-      'a.filename',
-      'a.extension',
-      'a.ticket_id',
-    ])
-    .where('a.id = :id', { id })
-    .andWhere('a.extension IN (:...extensions)', { 
-      extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff'] 
-    })
-    .getOne();
-}
+    return await this.attachmentRepo
+      .createQueryBuilder('a')
+      .select([
+        'a.id',
+        'a.filename',
+        'a.extension',
+        'a.ticket_id',
+      ])
+      .where('a.id = :id', { id })
+      .andWhere('a.extension IN (:...extensions)', {
+        extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff']
+      })
+      .getOne();
+  }
 
   /**
    * ค้นหาไฟล์แนบตาม id
@@ -98,7 +98,7 @@ export class AttachmentService {
    * เพิ่มไฟล์แนบให้กับ ticket
    * สามารถใช้กับ ticket entity โดยตรง
    */
-  async createWithTicket(data: { 
+  async createWithTicket(data: {
     ticket: Ticket;
     type?: string;
     filename?: string;
@@ -111,7 +111,7 @@ export class AttachmentService {
     attachment.extension = (data.extension || '').substring(0, 10); // จำกัดความยาว
     attachment.filename = (data.filename || '').substring(0, 10); // จำกัดความยาว
     attachment.create_by = data.create_by;
-    
+
     return this.attachmentRepo.save(attachment);
   }
   // ✅ Soft Delete ไฟล์แนบทั้งหมดของ ticket
@@ -189,9 +189,9 @@ export class AttachmentService {
     try {
       // หาไฟล์แนบที่ถูก soft delete แล้ว
       const attachments = await this.attachmentRepo.find({
-        where: { 
-          ticket_id: ticketId, 
-          isenabled: false 
+        where: {
+          ticket_id: ticketId,
+          isenabled: false
         }
       });
 
@@ -210,7 +210,7 @@ export class AttachmentService {
       for (const attachment of attachments) {
         try {
           const filePath = this.getAttachmentFilePath(attachment);
-          
+
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
             deletedFiles.push(filePath);
@@ -245,7 +245,7 @@ export class AttachmentService {
   private getAttachmentFilePath(attachment: TicketAttachment): string {
     // สมมติว่าไฟล์เก็บใน uploads/attachments/
     const uploadsDir = path.join(process.cwd(), 'uploads', 'attachments');
-    
+
     // Format: ticketId_attachmentId.extension
     let filename: string;
     if (attachment.extension) {
@@ -265,7 +265,7 @@ export class AttachmentService {
   }> {
     try {
       const sevenDaysAgo = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000));
-      
+
       // หาไฟล์แนบที่ soft delete ไปแล้วเกิน 7 วัน
       const expiredAttachments = await this.attachmentRepo.find({
         where: {
@@ -289,7 +289,7 @@ export class AttachmentService {
       for (const attachment of expiredAttachments) {
         try {
           const filePath = this.getAttachmentFilePath(attachment);
-          
+
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
             deletedFiles.push(filePath);
@@ -326,8 +326,8 @@ export class AttachmentService {
   }> {
     try {
       const deletedAttachments = await this.attachmentRepo.find({
-        where: { 
-          ticket_id: ticketId, 
+        where: {
+          ticket_id: ticketId,
           isenabled: false,
           deleted_at: Not(IsNull()) // ✅ แก้ไขให้ถูกต้อง
         },
@@ -335,29 +335,29 @@ export class AttachmentService {
       });
 
       const now = Date.now();
-      
-      // ✅ เพิ่มการตรวจสอบ null safety และกรองข้อมูล
-    const processedAttachments = deletedAttachments
-      .filter(attachment => attachment.deleted_at != null) // กรองเอา null/undefined ออก
-      .map(attachment => {
-        // ✅ ตอนนี้ TypeScript รู้แล้วว่า deleted_at ไม่เป็น null
-        const deletedTime = attachment.deleted_at!.getTime(); // ใช้ ! เพื่อบอก TypeScript ว่าแน่ใจว่าไม่เป็น null
-        const daysSinceDeleted = Math.floor((now - deletedTime) / (1000 * 60 * 60 * 24));
-        const daysLeft = Math.max(0, 7 - daysSinceDeleted);
-        const canRestore = daysLeft > 0;
 
-        return {
-          id: attachment.id,
-          filename: attachment.filename,
-          type: attachment.type,
-          deleted_at: attachment.deleted_at,
-          days_since_deleted: daysSinceDeleted,
-          days_left_to_restore: daysLeft,
-          can_restore: canRestore,
-          expires_at: new Date(deletedTime + (7 * 24 * 60 * 60 * 1000)),
-          status: canRestore ? 'Can Restore' : 'Expired'
-        };
-      });
+      // ✅ เพิ่มการตรวจสอบ null safety และกรองข้อมูล
+      const processedAttachments = deletedAttachments
+        .filter(attachment => attachment.deleted_at != null) // กรองเอา null/undefined ออก
+        .map(attachment => {
+          // ✅ ตอนนี้ TypeScript รู้แล้วว่า deleted_at ไม่เป็น null
+          const deletedTime = attachment.deleted_at!.getTime(); // ใช้ ! เพื่อบอก TypeScript ว่าแน่ใจว่าไม่เป็น null
+          const daysSinceDeleted = Math.floor((now - deletedTime) / (1000 * 60 * 60 * 24));
+          const daysLeft = Math.max(0, 7 - daysSinceDeleted);
+          const canRestore = daysLeft > 0;
+
+          return {
+            id: attachment.id,
+            filename: attachment.filename,
+            type: attachment.type,
+            deleted_at: attachment.deleted_at,
+            days_since_deleted: daysSinceDeleted,
+            days_left_to_restore: daysLeft,
+            can_restore: canRestore,
+            expires_at: new Date(deletedTime + (7 * 24 * 60 * 60 * 1000)),
+            status: canRestore ? 'Can Restore' : 'Expired'
+          };
+        });
 
       const summary = {
         total: processedAttachments.length,
