@@ -381,6 +381,7 @@ export class TicketService {
   async getTicketData(ticket_no: string, baseUrl: string) {
     try {
       const attachmentPath = '/images/issue_attachment/';
+      const fixAttachmentPath = '/images/fix_issue/';
 
       // ✅ Normalize ticket_no
       const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
@@ -505,8 +506,8 @@ export class TicketService {
         fix_attachment: fixAttachment.map(a => ({
           attachment_id: a.attachment_id,
           path: a.extension
-            ? `${baseUrl}${attachmentPath}${a.attachment_id}.${a.extension}`
-            : `${baseUrl}${attachmentPath}${a.attachment_id}`,
+            ? `${baseUrl}${fixAttachmentPath}${a.attachment_id}.${a.extension}`
+            : `${baseUrl}${fixAttachmentPath}${a.attachment_id}`,
         })),
         status_history: statusHistory.map(sh => ({
           status_id: sh.status_id,

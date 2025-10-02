@@ -5,7 +5,7 @@ import {
   InternalServerErrorException
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { CustomerForProject } from './entities/customer-for-project.entity';
 import { Project } from '../project/entities/project.entity';
 import { Customer } from '../customer/entities/customer.entity';
@@ -331,10 +331,26 @@ export class CustomerForProjectService {
     };
   }
 
-  async remove(id: number) {
-    const record = await this.customerForProjectRepository.findOneBy({ id, isenabled: true });
+  async remove(id: number | number[]) {
+    // แปลงเป็น array เสมอ
+    const ids = Array.isArray(id) ? id : [id];
+    
+    // ตรวจสอบว่ามี ids ส่งมาหรือไม่
+    if (ids.length === 0) {
+      return {
+        status: 0,
+        message: 'ไม่มีข้อมูลที่ต้องการลบ',
+        data: null
+      };
+    }
 
-    if (!record) {
+    // ค้นหาข้อมูลทั้งหมดที่ต้องการลบ
+    const records = await this.customerForProjectRepository.findBy({ 
+      id: In(ids), 
+      isenabled: true 
+    });
+
+    if (records.length === 0) {
       return {
         status: 0,
         message: 'ไม่พบข้อมูล',
@@ -342,14 +358,20 @@ export class CustomerForProjectService {
       };
     }
 
-    // Soft delete โดยเปลี่ยนค่า isenabled เป็น false
-    record.isenabled = false;
-    await this.customerForProjectRepository.save(record);
+    // Soft delete โดยเปลี่ยนค่า isenabled เป็น false ทั้งหมด
+    records.forEach(record => {
+      record.isenabled = false;
+    });
+    
+    await this.customerForProjectRepository.save(records);
 
     return {
       status: 1,
-      message: 'ลบข้อมูลสำเร็จ',
-      data: null
+      message: `ลบข้อมูลสำเร็จ ${records.length} รายการ`,
+      data: {
+        deletedCount: records.length,
+        deletedIds: records.map(r => r.id)
+      }
     };
   }
 

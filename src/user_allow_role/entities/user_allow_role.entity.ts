@@ -10,11 +10,15 @@ export class UserAllowRole {
     @PrimaryColumn()
     role_id: number;
 
-    @ManyToOne(() => Users, (user) => user.userAllowRoles)
+    @ManyToOne(() => Users, (user) => user.userAllowRoles, {
+        onDelete: 'CASCADE'   // 👈 ลบ user แล้วลบ record ในตารางนี้ด้วย
+    })
     @JoinColumn({ name: 'user_id'})
     user: Users;
 
-    @ManyToOne(() => MasterRole, (role) => role.userAllowRole)
+    @ManyToOne(() => MasterRole, (role) => role.userAllowRole, {
+        onDelete: 'CASCADE'   // 👈 ลบ role แล้วลบ record ในตารางนี้ด้วย
+    })
     @JoinColumn({ name: 'role_id'})
     role: MasterRole;
-    }
+}
