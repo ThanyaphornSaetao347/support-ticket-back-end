@@ -4,7 +4,6 @@ import {
   Post,
   Body,
   Param,
-  Put,
   ParseIntPipe,
   UseGuards,
   Req,
@@ -272,7 +271,7 @@ export class TicketController {
   }
 
   @UseGuards(JwtAuthGuard, PermissionGuard)
-  @RequireAnyAction('create_ticket')
+  @RequireAnyAction('create_ticket', 'update_ticket')
   @Post('saveTicket')
   async saveTicket(@Body() dto: any, @Request() req: any): Promise<any> {
     const userId = req.user?.id || req.user?.sub || req.user?.user_id || req.user?.userId;
@@ -330,41 +329,79 @@ export class TicketController {
     }
   }
 
-  @Post('getAllTicket')
+  @Get('getAllTicket')
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('read_ticket', 'read_all_tickets')
-  async getAllTicket(@Request() req: any) {
+  async getAllTicket(
+    @Request() req: any,
+    @Query('page') page: string,
+    @Query('perPage') perPage: string,
+  ) {
     try {
       const userId = this.extractUserId(req);
       if (!userId) {
         return {
           success: false,
-          message: 'User ID not found in token'
+          message: 'User ID not found in token',
+          pagination: null,
+          data: [],
         };
       }
 
-      console.log('👤 Getting all tickets for userId:', userId);
+      // ✅ แปลงค่าจาก query string เป็นตัวเลขอย่างปลอดภัย
+      const pageNum = Number(page) || 1;
+      const perPageNum = Number(perPage) || 25;
 
-      // ✅ Guard จะเช็คสิทธิ์ให้แล้ว ดึงข้อมูลได้เลย
-      const tickets = await this.ticketService.getAllTicket(userId);
-      console.log('📊 Total tickets from DB:', tickets?.length || 0);
+      console.log(`👤 userId: ${userId} | page=${pageNum}, perPage=${perPageNum}`);
 
+      // ✅ เรียก service เพื่อดึงข้อมูลพร้อม pagination
+      const result = await this.ticketService.getAllTicket(userId, pageNum, perPageNum);
+
+      // ✅ ตรวจสอบว่าผลลัพธ์จาก service เป็น object จริง
+      if (!result || typeof result !== 'object') {
+        console.warn('⚠️ Unexpected service result:', result);
+        return {
+          success: false,
+          message: 'Service did not return a valid object',
+          pagination: null,
+          data: [],
+        };
+      }
+
+      // ✅ ตรวจสอบ pagination object ป้องกัน NaN
+      const pagination = result.pagination || {
+        totalRows: 0,
+        totalPages: 1,
+        currentPage: pageNum,
+        perPage: perPageNum,
+      };
+
+      // ✅ ส่ง response เป็น object JSON เท่านั้น
       return {
         success: true,
-        data: tickets || [],
+        message: result.message || 'Get all tickets success',
+        pagination,
+        data: Array.isArray(result.data) ? result.data : [],
         debug: {
-          userId: userId,
-          totalTickets: tickets?.length || 0,
-        }
+          userId,
+          page: pageNum,
+          perPage: perPageNum,
+          totalTickets: pagination.totalRows || 0,
+        },
       };
     } catch (error) {
       console.error('💥 Error in getAllTicket:', error);
+
+      // ✅ ส่ง JSON object แทนข้อความ string
       return {
         success: false,
-        message: error.message
+        message: error?.message || 'Unexpected error in getAllTicket',
+        pagination: null,
+        data: [],
       };
     }
   }
+
 
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('solve_problem', 'change_status')
@@ -492,7 +529,8 @@ export class TicketController {
     }
   }
 
-  @Put('tickets/:ticket_no')
+  // ใช้สำหรับ supporter
+  @Patch('tickets/:ticket_no')
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('update_ticket')
   async updateTicketByNo(
@@ -541,7 +579,6 @@ export class TicketController {
     @Body() body: {
       status_id: number;
       fix_issue_description?: string;
-      comment?: string;
     },
     @Request() req: any,
   ) {
@@ -565,7 +602,6 @@ export class TicketController {
         body.status_id,
         userId,
         body.fix_issue_description,
-        body.comment
       );
 
       return {

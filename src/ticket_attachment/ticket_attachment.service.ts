@@ -375,7 +375,7 @@ export class AttachmentService {
     }
   }
 
-  async deleteAttachment(id: number, userId: number) {
+  async deleteIssueAttachment(id: number, userId: number) {
     const attachment = await this.attachmentRepo.findOne({
       where: { id },
       relations: ['ticket'],
@@ -385,19 +385,52 @@ export class AttachmentService {
       throw new NotFoundException('Attachment not found');
     }
 
-    if (attachment.ticket.create_by !== userId) {
-      throw new ForbiddenException('You do not have permission to delete this attachment');
-    }
+    // ✅ ตรวจสอบว่าเป็นไฟล์ประเภท reporter จริงหรือไม่
+      if (attachment.type !== 'reporter') {
+        console.log(`❌ Attachment ID ${id} is not a reporter type (type: ${attachment.type})`);
+        throw new BadRequestException('This attachment is not an issue attachment');
+      }
 
     // ลบไฟล์จริง
     const fileIssuePath = path.join(__dirname, '..', '..', 'public', 'images', 'issue_attachment', attachment.filename);
-    const fileFixIssuePath = path.join(__dirname, '..', '..', 'public', 'images', 'issue_attachment', attachment.filename);
 
     try {
       await fs.promises.unlink(fileIssuePath);
-      await fs.promises.unlink(fileFixIssuePath);
     } catch (error) {
       console.warn('File issue might already be deleted or not found:', fileIssuePath);
+    }
+
+    await this.attachmentRepo.remove(attachment);
+
+    return {
+      code: 0,
+      message: 'Attachment deleted successfully',
+      data: { id },
+    };
+  }
+
+  async deleteFixIssueAttachment(id: number, userId: number) {
+    const attachment = await this.attachmentRepo.findOne({
+      where: { id },
+      relations: ['ticket'],
+    });
+
+    if (!attachment) {
+      throw new NotFoundException('Attachment not found');
+    }
+
+    // ✅ ตรวจสอบว่าเป็นไฟล์ประเภท reporter จริงหรือไม่
+      if (attachment.type !== 'supporter') {
+        console.log(`❌ Attachment ID ${id} is not a reporter type (type: ${attachment.type})`);
+        throw new BadRequestException('This attachment is not an issue attachment');
+      }
+
+    // ลบไฟล์จริง
+    const fileFixIssuePath = path.join(__dirname, '..', '..', 'public', 'images', 'fix_issue', attachment.filename);
+
+    try {
+      await fs.promises.unlink(fileFixIssuePath);
+    } catch (error) {
       console.warn('File fix issue might already be deleted or not found:', fileFixIssuePath);
     }
 

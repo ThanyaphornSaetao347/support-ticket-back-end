@@ -111,7 +111,7 @@ export async function getNextFilenameWithCounter(uploadPath: string, ticket_id: 
   return newFilename;
 }
 
-@Controller()
+@Controller('api')
 export class TicketAttachmentController {
   constructor(
     private readonly ticketService: TicketService,
@@ -310,7 +310,7 @@ export class TicketAttachmentController {
   }
 
   // ใช้สำหรับการแนปไฟล์ครั้งแรกของการสร้างทิกเก็ต
-  @Post('api/updateAttachment')
+  @Post('updateAttachment')
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('create_ticket')
   @UseInterceptors(FilesInterceptor('files', 5, {
@@ -489,8 +489,176 @@ export class TicketAttachmentController {
     }
   }
 
+  // ใช้ update หรือ edit ticket ของลูกค้า โดยสามารถทำได้โดยลูกค้าและแอดมิน คนที่มีสิทธิ์
+  @Patch('updateAttachment')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('create_ticket', 'update_ticket')
+  @UseInterceptors(FilesInterceptor('files', 5, {
+    storage: diskStorage({
+      destination: './uploads/issue_attachment',
+      filename: async (req, file, cb) => {
+        const ticket_id = req.body?.ticket_id || req.query?.ticket_id;
+        if (!ticket_id) {
+          console.error('ticket_id is missing in form-data');
+          return cb(new BadRequestException('ticket_id is required'), '');
+        }
+
+        try {
+          const newFilename = await getNextFilenameWithCounter('./uploads/issue_attachment', ticket_id, file.originalname);
+          cb(null, newFilename);
+        } catch (error) {
+          cb(error, '');
+        }
+      }
+    }),
+    fileFilter: (req, file, cb) => {
+      console.log('File being uploaded:', {
+        fieldname: file.fieldname,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size
+      });
+
+      const allowedMimeTypes = [
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff',
+        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'text/plain', 'text/csv', 'application/json',
+        'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed', 'application/x-zip-compressed',
+        'application/rtf', 'application/xml', 'text/xml'
+      ];
+
+      const allowedExtensions = [
+        '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff',
+        '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+        '.txt', '.csv', '.json', '.xml', '.rtf',
+        '.zip', '.rar', '.7z'
+      ];
+
+      const fileExtension = extname(file.originalname).toLowerCase();
+
+      if (allowedMimeTypes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
+        cb(null, true);
+      } else {
+        console.log('File type not allowed:', {
+          mimetype: file.mimetype,
+          extension: fileExtension,
+          filename: file.originalname
+        });
+
+        return cb(
+          new BadRequestException(
+            `File type '${file.mimetype}' with extension '${fileExtension}' is not allowed. ` +
+            `Allowed types: images, PDF, Word, Excel, PowerPoint, text files, and archives.`
+          ),
+          false
+        );
+      }
+    },
+    limits: {
+      fileSize: 10 * 1024 * 1024,
+    }
+  }))
+  async updateUserAttachment(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body('ticket_id') ticket_id: string,
+    @Request() req: any,
+  ) {
+    try {
+      if (!files || files.length === 0) {
+        throw new BadRequestException('No files uploaded');
+      }
+
+      if (!ticket_id) {
+        throw new BadRequestException('ticket_id is required');
+      }
+
+      // ✅ แก้ตรงนี้ - Fix เป็น reporter เสมอ
+      const attachmentType = 'reporter';
+      console.log(`User role_id: ${req.user?.role_id}, Attachment type: ${attachmentType} (Issue attachment)`);
+      const uploadedFiles: any[] = [];
+      const errors: any[] = [];
+
+      for (const file of files) {
+        try {
+          const processedFile = await this.processImage(file);
+
+          const attachment = await this.attachmentService.create({
+            ticket_id: parseInt(ticket_id),
+            type: attachmentType, // ✅ ใช้ type ที่กำหนดจาก role_id
+            file,
+            create_by: req.user.id,
+          });
+
+          uploadedFiles.push({
+            id: attachment.id,
+            filename: attachment.filename,
+            original_name: file.originalname,
+            file_size: processedFile.size,
+            file_url: `/images/issue_attchment/${attachment.id}`,
+            extension: attachment.extension,
+          });
+
+          if (file.filename !== processedFile.filename) {
+            await this.deleteFile(file.path);
+          }
+
+        } catch (error) {
+          console.error('File processing error:', error);
+
+          if (file.path) {
+            await this.deleteFile(file.path);
+          }
+
+          errors.push({
+            filename: file.originalname,
+            error: error.message,
+          });
+        }
+      }
+
+      const response = {
+        success: uploadedFiles.length > 0,
+        message: `Successfully uploaded ${uploadedFiles.length} file(s)`,
+        data: {
+          uploaded_files: uploadedFiles,
+          total_uploaded: uploadedFiles.length,
+          total_files: files.length,
+          errors: errors.length > 0 ? errors : undefined,
+        },
+      };
+
+      if (errors.length === 0) return response;
+
+      if (uploadedFiles.length > 0) {
+        return {
+          ...response,
+          message: `Uploaded ${uploadedFiles.length}/${files.length} files with some errors`,
+        };
+      }
+
+      throw new BadRequestException({
+        message: 'Failed to upload any files',
+        errors: errors,
+      });
+
+    } catch (error) {
+      console.error('Upload error:', error);
+
+      if (files && files.length > 0) {
+        for (const file of files) {
+          if (file.path) {
+            await this.deleteFile(file.path);
+          }
+        }
+      }
+      throw error;
+    }
+  }
+
   // ใช้สำหรับการแนปไฟลล์เพื่อตอบกลับลูกค้าในส่วนของ support information ของ supporter
-  @Patch('api/fix_issue/attachment')
+  @Patch('fix_issue/attachment')
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('solve_problem')
   @UseInterceptors(FilesInterceptor('files', 5, {
@@ -679,13 +847,25 @@ export class TicketAttachmentController {
     };
   }
 
-  @Delete('api/images/issue_attachment/:id')
+  @Delete('issue_attachment/:id')
   @UseGuards(JwtAuthGuard)
-  async deleteAttachment(
+  async deleteIssueAttachment(
     @Param('id') id: number,
     @Request() req: any
   ) {
     const userId = req.user?.id;
-    return this.attachmentService.deleteAttachment(Number(id), userId);
+    console.log(`🔎 Deleting issue_attachment ID: ${id}, by user: ${userId}`);
+    return this.attachmentService.deleteIssueAttachment(Number(id), userId);
+  }
+
+  @Delete('fix_issue/:id')
+  @UseGuards(JwtAuthGuard)
+  async deleteFixIssueAttachment(
+    @Param('id') id: number,
+    @Request() req: any
+  ) {
+    const userId = req.user?.id;
+    console.log(`🔎 Deleting fix_issue ID: ${id}, by user: ${userId}`);
+    return this.attachmentService.deleteFixIssueAttachment(Number(id), userId);
   }
 }

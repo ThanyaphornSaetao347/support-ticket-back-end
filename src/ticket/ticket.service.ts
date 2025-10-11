@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource,Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Ticket } from './entities/ticket.entity';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketStatusHistory } from '../ticket_status_history/entities/ticket_status_history.entity';
@@ -46,7 +46,7 @@ export class TicketService {
     private readonly notiService: NotificationService,
     private readonly permissionService: PermissionService,
   ) { }
-  
+
   async getCategoryBreakdown(
     year: number,
     userId?: number
@@ -227,7 +227,7 @@ export class TicketService {
       throw error;
     }
   }
-  
+
   // Function สำหรับ ticket_no = (Running Format: T250500001 Format มาจาก YYMM00000 [ปี:2][เดือน:2][Running:00000])
   async generateTicketNumber(): Promise<string> {
     const now = new Date();
@@ -284,39 +284,52 @@ export class TicketService {
     return fallbackTicketNo;
   }
 
-  async saveTicket(dto: any, userId: number): Promise<{ ticket_id: number, ticket_no: string }> {
+  async saveTicket(
+    dto: any,
+    userId: number
+  ): Promise<{ ticket_id: number; ticket_no: string }> {
     try {
       if (!dto) throw new BadRequestException('Request body is required');
 
       const now = new Date();
       let ticket;
       let shouldSaveStatusHistory = false;
-      let oldStatusId = null;
-      let newStatusId = dto.status_id || 1;
+      let oldStatusId: number | null = null;
+      const newStatusId = dto.status_id || 1;
 
       if (dto.ticket_id) {
-        // Update existing ticket
+        // 🔹 กรณีอัปเดต ticket เดิม
         ticket = await this.ticketRepo.findOne({ where: { id: dto.ticket_id } });
         if (!ticket) throw new BadRequestException('ไม่พบ ticket ที่ต้องการอัปเดต');
 
         oldStatusId = ticket.status_id;
 
-        // อัปเดตข้อมูล ticket
-        ticket.project_id = dto.project_id;
-        ticket.categories_id = dto.categories_id;
-        ticket.issue_description = dto.issue_description;
-        ticket.status_id = newStatusId;  // อัปเดต status
-        ticket.issue_attachment = dto.issue_attachment || ticket.issue_attachment;
+        // ✅ อัปเดตเฉพาะฟิลด์ที่ "ส่งมา" เท่านั้น
+        if (dto.project_id !== undefined) {
+          ticket.project_id = dto.project_id;
+        }
+        if (dto.categories_id !== undefined) {
+          ticket.categories_id = dto.categories_id;
+        }
+        if (dto.issue_description !== undefined) {
+          ticket.issue_description = dto.issue_description;
+        }
+        if (dto.issue_attachment !== undefined) {
+          ticket.issue_attachment = dto.issue_attachment;
+        }
+
+        // ✅ ข้อมูลระบบ
         ticket.update_by = userId;
         ticket.update_date = now;
 
         await this.ticketRepo.save(ticket);
 
+        // ถ้ามีการเปลี่ยนสถานะ (ในกรณีอาจมี status_id)
         if (oldStatusId !== newStatusId) {
           shouldSaveStatusHistory = true;
         }
       } else {
-        // สร้าง ticket ใหม่
+        // 🔹 กรณีสร้างใหม่
         const ticketNo = await this.generateTicketNumber();
 
         ticket = this.ticketRepo.create({
@@ -324,21 +337,21 @@ export class TicketService {
           project_id: dto.project_id,
           categories_id: dto.categories_id,
           issue_description: dto.issue_description,
-          status_id: newStatusId, // กำหนดสถานะตั้งต้น
+          // issue_attachment: dto.issue_attachment || null,
+          status_id: newStatusId,
           create_by: userId,
           create_date: now,
           update_by: userId,
           update_date: now,
-          isenabled: true, // ถ้าต้องการเปิดใช้งานทันที
+          isenabled: true,
         });
 
         ticket = await this.ticketRepo.save(ticket);
         shouldSaveStatusHistory = true;
       }
 
-      // บันทึก status history เฉพาะเมื่อสถานะเปลี่ยนหรือใหม่
+      // ✅ บันทึกประวัติสถานะ (เฉพาะตอนสร้างใหม่หรือเปลี่ยนสถานะ)
       if (shouldSaveStatusHistory) {
-        // ตรวจสอบว่ามีสถานะนี้ใน history แล้วหรือยัง (ป้องกันซ้ำ)
         const existingHistory = await this.historyRepo.findOne({
           where: { ticket_id: ticket.id, status_id: newStatusId },
           order: { create_date: 'DESC' },
@@ -380,8 +393,8 @@ export class TicketService {
   // ✅ เพิ่ม method ใหม่ที่ใช้ ticket_no
   async getTicketData(ticket_no: string, baseUrl: string) {
     try {
-      const attachmentPath = '/images/issue_attachment/';
-      const fixAttachmentPath = '/images/fix_issue/';
+      const attachmentPath = '/api/images/issue_attachment/';
+      const fixAttachmentPath = '/api/images/fix_issue/';
 
       // ✅ Normalize ticket_no
       const normalizedTicketNo = this.normalizeTicketNo(ticket_no);
@@ -703,58 +716,94 @@ export class TicketService {
     }
   }
 
-  async getAllTicket(userId: number) {
+  async getAllTicket(userId: number, page: number = 1, perPage: number = 25) {
     try {
-      console.log('getAllTicket called with userId:', userId);
+      console.log('📥 getAllTicket called with userId:', userId);
 
-      // ดึง permission ของ user
+      // ✅ ตรวจสิทธิ์ของผู้ใช้
       const userPermissions: number[] = await this.checkUserPermissions(userId);
       const isViewAll = userPermissions.includes(13); // VIEW_ALL_TICKETS
 
-      const query = this.ticketRepo
+      // ✅ สร้าง QueryBuilder หลัก
+      const baseQuery = this.ticketRepo
         .createQueryBuilder('t')
-        .select([
-          't.ticket_no',
-          't.categories_id',
-          't.project_id',
-          't.issue_description',
-          't.status_id',
-          't.create_by',
-          't.create_date',
-          'tcl.name AS categories_name',
-          'p.name AS project_name',
-          'tsl.name AS status_name'
-        ])
         .leftJoin('ticket_categories_language', 'tcl', 'tcl.category_id = t.categories_id AND tcl.language_id = :lang', { lang: 'th' })
         .leftJoin('project', 'p', 'p.id = t.project_id')
         .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = t.status_id AND tsl.language_id = :lang', { lang: 'th' })
-        .where('t.isenabled = true')
-        .orderBy('t.create_date', 'DESC');
+        .where('t.isenabled = true');
 
       if (!isViewAll) {
-        query.andWhere('t.create_by = :userId', { userId });
+        baseQuery.andWhere('t.create_by = :userId', { userId });
       }
 
-      const rawTickets = await query.getRawMany();
+      // ✅ นับจำนวนทั้งหมดก่อน (ต้องใช้ clone เพื่อไม่กระทบ offset/limit)
+      const totalRows = await baseQuery.clone().getCount();
 
+      // ✅ คำนวณค่า pagination
+      const totalPages = Math.ceil(totalRows / perPage) || 1;
+      const offset = (page - 1) * perPage;
+
+      // ✅ ดึงเฉพาะข้อมูลตามหน้า
+      const rawTickets = await baseQuery
+        .select([
+          't.ticket_no AS ticket_no',
+          't.categories_id AS categories_id',
+          't.project_id AS project_id',
+          't.issue_description AS issue_description',
+          't.status_id AS status_id',
+          't.create_by AS create_by',
+          't.create_date AS create_date',
+          'tcl.name AS categories_name',
+          'p.name AS project_name',
+          'tsl.name AS status_name',
+        ])
+        .orderBy('t.create_date', 'DESC')
+        .offset(offset)
+        .limit(perPage)
+        .getRawMany();
+
+      // ✅ map ค่ากลับ
       const tickets = rawTickets.map(t => ({
-        ticket_no: t.t_ticket_no,
-        categories_id: t.t_categories_id,
-        project_id: t.t_project_id,
-        issue_description: t.t_issue_description,
-        status_id: t.t_status_id,
-        create_by: t.t_create_by,
-        create_date: t.t_create_date,
+        ticket_no: t.ticket_no,
+        categories_id: t.categories_id,
+        project_id: t.project_id,
+        issue_description: t.issue_description,
+        status_id: t.status_id,
+        create_by: t.create_by,
+        create_date: t.create_date,
         categories_name: t.categories_name,
         project_name: t.project_name,
         status_name: t.status_name,
       }));
 
-      return tickets;
+      // ✅ ข้อความ info
+      const infoMessage = `พบข้อมูลทั้งหมด ${totalRows} รายการ | หน้าที่ ${page}/${totalPages} (${perPage} ต่อหน้า)`;
+
+      return {
+        success: true,
+        message: infoMessage,
+        pagination: {
+          totalRows,
+          totalPages,
+          currentPage: page,
+          perPage,
+        },
+        data: tickets,
+      };
 
     } catch (error) {
-      console.log('Error in getAllTicket:', error.message);
-      throw new Error(`Failed to get tickets: ${error.message}`);
+      console.error('💥 Error in getAllTicket:', error);
+      return {
+        success: false,
+        message: `Failed to get tickets: ${error.message}`,
+        pagination: {
+          totalRows: 0,
+          totalPages: 1,
+          currentPage: page,
+          perPage,
+        },
+        data: [],
+      };
     }
   }
 
@@ -1093,9 +1142,9 @@ export class TicketService {
     }
 
     // ตรวจสอบสิทธิ์ด้วย create_by
-    if (ticket.create_by !== userId) {
-      throw new ForbiddenException('You do not have permission to update this ticket');
-    }
+    // if (ticket.create_by !== userId) {
+    //   throw new ForbiddenException('You do not have permission to update this ticket');
+    // }
 
     // อัพเดตข้อมูล
     Object.assign(ticket, updateData);
