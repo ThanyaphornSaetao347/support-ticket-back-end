@@ -63,6 +63,8 @@ export class Ticket {
   @Column({ type: 'timestamp', nullable: true })
   deleted_at?: Date;
 
+  @Column({ type: 'smallint', nullable:true})
+  priority: number | null;
 
   @Column({ type: 'boolean', default: true })
   isenabled: boolean;

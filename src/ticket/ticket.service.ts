@@ -17,6 +17,7 @@ import { TicketAssigned } from '../ticket_assigned/entities/ticket_assigned.enti
 import { Project } from '../project/entities/project.entity';
 import { PermissionService } from '../permission/permission.service';
 import { CategoryStatsDTO } from './dto/dashboard.dto';
+import { use } from 'passport';
 
 @Injectable()
 export class TicketService {
@@ -723,29 +724,48 @@ export class TicketService {
       // ✅ ตรวจสิทธิ์ของผู้ใช้
       const userPermissions: number[] = await this.checkUserPermissions(userId);
       const isViewAll = userPermissions.includes(13); // VIEW_ALL_TICKETS
+      const isSupporter = userPermissions.includes(8); // SUPPORTER_ROLE
 
-      // ✅ สร้าง QueryBuilder หลัก
+      // ✅ ดึง role ของผู้ใช้ (เผื่ออนาคตมีหลาย role)
+      const userRoles = await this.userRepo.find({
+        where: { id: userId },
+        select: ['role'],
+      });
+
+      const roleIds = userRoles.map(r => r.role);
+      console.log('👤 User Roles:', roleIds);
+
+      // ✅ เริ่มสร้าง QueryBuilder หลัก
       const baseQuery = this.ticketRepo
         .createQueryBuilder('t')
         .leftJoin('ticket_categories_language', 'tcl', 'tcl.category_id = t.categories_id AND tcl.language_id = :lang', { lang: 'th' })
         .leftJoin('project', 'p', 'p.id = t.project_id')
         .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = t.status_id AND tsl.language_id = :lang', { lang: 'th' })
+        .leftJoin('users', 'u', 'u.id = t.create_by')
         .where('t.isenabled = true');
 
-      if (!isViewAll) {
+      // ✅ ถ้า user มี role_id = 8 ให้แสดงเฉพาะ ticket ที่อยู่ใน ticket_assigned
+      if (isSupporter) {
+        baseQuery.innerJoin('ticket_assigned', 'ta', 'ta.ticket_id = t.id AND ta.user_id = :userId', { userId });
+        console.log('🎯 Filtering tickets assigned to userId:', userId);
+      }
+      // ✅ ถ้าไม่มีสิทธิ์ view_all → แสดงเฉพาะ ticket ที่ตัวเองสร้าง
+      else if (!isViewAll) {
         baseQuery.andWhere('t.create_by = :userId', { userId });
+        console.log('👤 Filtering tickets created by userId:', userId);
       }
 
       // ✅ นับจำนวนทั้งหมดก่อน (ต้องใช้ clone เพื่อไม่กระทบ offset/limit)
       const totalRows = await baseQuery.clone().getCount();
 
-      // ✅ คำนวณค่า pagination
+      // ✅ Pagination
       const totalPages = Math.ceil(totalRows / perPage) || 1;
       const offset = (page - 1) * perPage;
 
       // ✅ ดึงเฉพาะข้อมูลตามหน้า
       const rawTickets = await baseQuery
         .select([
+          't.id AS id',
           't.ticket_no AS ticket_no',
           't.categories_id AS categories_id',
           't.project_id AS project_id',
@@ -754,8 +774,10 @@ export class TicketService {
           't.create_by AS create_by',
           't.create_date AS create_date',
           'tcl.name AS categories_name',
+          't.priority AS priority',
           'p.name AS project_name',
           'tsl.name AS status_name',
+          'u.firstname || \' \' || u.lastname AS name',
         ])
         .orderBy('t.create_date', 'DESC')
         .offset(offset)
@@ -764,19 +786,21 @@ export class TicketService {
 
       // ✅ map ค่ากลับ
       const tickets = rawTickets.map(t => ({
+        id: t.id,
         ticket_no: t.ticket_no,
         categories_id: t.categories_id,
         project_id: t.project_id,
         issue_description: t.issue_description,
         status_id: t.status_id,
         create_by: t.create_by,
+        name: t.name,
         create_date: t.create_date,
         categories_name: t.categories_name,
+        priority: t.priority ?? null,
         project_name: t.project_name,
         status_name: t.status_name,
       }));
 
-      // ✅ ข้อความ info
       const infoMessage = `พบข้อมูลทั้งหมด ${totalRows} รายการ | หน้าที่ ${page}/${totalPages} (${perPage} ต่อหน้า)`;
 
       return {
@@ -931,23 +955,49 @@ export class TicketService {
     await queryRunner.startTransaction();
 
     try {
-      // 0. ตรวจสอบสิทธิ์
+      // ✅ 0. ตรวจสอบสิทธิ์พื้นฐาน (ต้องมี role_id = 8 หรือ 19 ถึงเข้าได้)
       const userPermissions = await this.checkUserPermissions(currentUserId);
       if (![8, 19].some(p => userPermissions.includes(p))) {
         throw new Error('Permission denied');
       }
 
-      // 1. Update ticket fields + คำนวณเวลา
+      // ✅ 0.1 ตรวจสอบสิทธิ์เฉพาะเมื่อมีการส่ง priority เข้ามา
+      if (body.priority !== undefined) {
+        const allowedPriorities = [1, 2, 3];
+        const priorityValue = Number(body.priority);
+
+        if (!allowedPriorities.includes(priorityValue)) {
+          throw new Error('Invalid priority value. Must be 1, 2, or 3.');
+        }
+      }
+
+      // ✅ 1. Update ticket fields + คำนวณเวลา
       const chk = await this.updateTicketFieldsWithTimeCalculation(ticketNo, body, currentUserId, results);
 
-      // 2. Handle attachments
+      // ✅ 1.1 ถ้ามี priority ให้ update ลงตาราง ticket
+      if (body.priority !== undefined) {
+        await queryRunner.manager.update(this.ticketRepo.target, { ticket_no: ticketNo }, {
+          priority: Number(body.priority)
+        });
+        console.log(`✅ Updated ticket priority to ${body.priority}`);
+
+        // 🔁 ดึงข้อมูล ticket ปัจจุบันกลับมาใหม่ เพื่อให้ priority ใน response ตรงกับ DB
+        const updatedTicket = await queryRunner.manager.findOne(this.ticketRepo.target, {
+          where: { ticket_no: ticketNo }
+        });
+        if (updatedTicket) {
+          results.ticket = updatedTicket;
+        }
+      }
+
+      // ✅ 2. Handle attachments
       if (files?.length) {
         const ticketForFiles = await queryRunner.manager.findOne(this.ticketRepo.target, { where: { ticket_no: ticketNo } });
         if (!ticketForFiles) throw new Error(`Ticket ${ticketNo} not found`);
         await this.createAttachments(files, ticketForFiles.id, currentUserId, results);
       }
 
-      // 3. Update status + insert history
+      // ✅ 3. Update status + insert history
       if (chk) {
         // Update ticket status
         await queryRunner.manager.update(this.ticketRepo.target, { ticket_no: ticketNo }, { status_id });
@@ -967,28 +1017,23 @@ export class TicketService {
           create_date: new Date()
         });
 
+        // ✅ Assign
         if (assignTo) {
-          console.log('🔄 Assigning ticket to user_id:', assignTo);
-
-          // ตรวจสอบว่า ticket นี้มีการ assign แล้วหรือยัง
           const existingAssign = await queryRunner.manager.findOne(this.assignRepo.target, {
             where: { ticket_id: ticket.id }
           });
 
           if (existingAssign) {
-            // Update คนที่ถูก assign
             await queryRunner.manager.update(this.assignRepo.target,
               { ticket_id: ticket.id },
               {
-                user_id: assignTo,        // คนที่ถูก assign
-                create_by: currentUserId, // คนที่ทำการ assign
+                user_id: assignTo,
+                create_by: currentUserId,
                 create_date: new Date()
               }
             );
-            await queryRunner.manager.save(TicketAssigned, existingAssign);
             console.log('✅ Updated existing ticket_assigned');
           } else {
-            // Insert ใหม่
             const newAssign = queryRunner.manager.create(this.assignRepo.target, {
               ticket_id: ticket.id,
               user_id: assignTo,
@@ -997,15 +1042,13 @@ export class TicketService {
             });
 
             await queryRunner.manager.save(newAssign);
-            console.log('✅ Assigning ticket to user_id:', assignTo);
-            console.log('Inserted new ticket_assigned:', newAssign)
+            console.log('✅ Assigned new supporter:', newAssign);
           }
         }
       }
 
       await queryRunner.commitTransaction();
 
-      // ✅ Return JSON-safe
       return {
         ticket_no: ticketNo,
         updated_status_id: status_id,

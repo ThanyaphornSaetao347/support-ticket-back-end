@@ -415,45 +415,65 @@ export class TicketController {
   ) {
     try {
       const status_id = Number(body.status_id);
-      const assignTo = Number(body.user_id)
+      const assignTo = Number(body.user_id);
+      const priority = body.priority !== undefined ? Number(body.priority) : undefined;
+
+      const userId =
+        req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub;
 
       console.log('📥 Incoming saveSupporter request:', {
         ticketNo,
         status_id,
         assignTo,
-        userId: req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub,
+        priority,
+        userId,
         body,
-        filesCount: files?.length || 0
+        filesCount: files?.length || 0,
       });
 
+      // ✅ ตรวจสอบค่าพื้นฐาน
       if (!status_id) {
         return { success: false, message: 'status_id is required' };
       }
-
-      const userId = req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub;
       if (!userId) {
         return { success: false, message: 'User ID not found in token' };
       }
 
+      // ✅ ตรวจสอบ priority (เฉพาะตอนส่งมา)
+      if (priority !== undefined) {
+        const allowed = [1, 2, 3];
+        if (!allowed.includes(priority)) {
+          throw new HttpException(
+            { success: false, message: 'Invalid priority value. Must be 1, 2, or 3.' },
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      }
+
+      // ✅ ส่งต่อไป service
       const result = await this.ticketService.saveSupporter(
         ticketNo,
         body,
         files,
         userId,
         status_id,
-        assignTo // <--- เพิ่มตรงนี้
+        assignTo,
       );
 
       return {
         success: true,
         message: 'Supporter data saved successfully',
-        data: result
+        data: result,
       };
     } catch (error) {
-      console.error('Error in saveSupporter:', error);
+      console.error('❌ Error in saveSupporter:', error);
       throw new HttpException(
-        { success: false, message: 'Failed to save supporter data', error: error.message },
-        HttpStatus.INTERNAL_SERVER_ERROR
+        {
+          success: false,
+          message: 'Failed to save supporter data',
+          error: error.message,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
