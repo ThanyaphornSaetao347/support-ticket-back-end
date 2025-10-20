@@ -336,72 +336,61 @@ export class TicketController {
     @Request() req: any,
     @Query('page') page: string,
     @Query('perPage') perPage: string,
+    @Query('status_id') status_id?: string,
+    @Query('project_id') project_id?: string,
+    @Query('categories_id') categories_id?: string,
+    @Query('priority') priority?: string,
+    @Query('keyword') keyword?: string,
+    // @Query('date_start') date_start?: string,
+    // @Query('date_end') date_end?: string,
   ) {
     try {
       const userId = this.extractUserId(req);
       if (!userId) {
-        return {
-          success: false,
-          message: 'User ID not found in token',
-          pagination: null,
-          data: [],
-        };
+        return { success: false, message: 'User ID not found in token', pagination: null, data: [] };
       }
 
-      // ✅ แปลงค่าจาก query string เป็นตัวเลขอย่างปลอดภัย
       const pageNum = Number(page) || 1;
       const perPageNum = Number(perPage) || 25;
 
-      console.log(`👤 userId: ${userId} | page=${pageNum}, perPage=${perPageNum}`);
-
-      // ✅ เรียก service เพื่อดึงข้อมูลพร้อม pagination
-      const result = await this.ticketService.getAllTicket(userId, pageNum, perPageNum);
-
-      // ✅ ตรวจสอบว่าผลลัพธ์จาก service เป็น object จริง
-      if (!result || typeof result !== 'object') {
-        console.warn('⚠️ Unexpected service result:', result);
-        return {
-          success: false,
-          message: 'Service did not return a valid object',
-          pagination: null,
-          data: [],
-        };
-      }
-
-      // ✅ ตรวจสอบ pagination object ป้องกัน NaN
-      const pagination = result.pagination || {
-        totalRows: 0,
-        totalPages: 1,
-        currentPage: pageNum,
-        perPage: perPageNum,
+      const filters = {
+        status_id: status_id ? Number(status_id) : undefined,
+        project_id: project_id ? Number(project_id) : undefined,
+        categories_id: categories_id ? Number(categories_id) : undefined,
+        priority: priority ? Number(priority) : undefined,
+        keyword: keyword ?.trim() || undefined,
+        // date_start,
+        // date_end,
       };
 
-      // ✅ ส่ง response เป็น object JSON เท่านั้น
+      console.log(`👤 userId: ${userId} | page=${pageNum}, perPage=${perPageNum} | filters:`, filters);
+
+      const result = await this.ticketService.getAllTicket(userId, pageNum, perPageNum, filters);
+
       return {
-        success: true,
-        message: result.message || 'Get all tickets success',
-        pagination,
-        data: Array.isArray(result.data) ? result.data : [],
-        debug: {
-          userId,
-          page: pageNum,
-          perPage: perPageNum,
-          totalTickets: pagination.totalRows || 0,
-        },
+        success: result.success,
+        message: result.message,
+        pagination: result.pagination,
+        data: result.data,
       };
     } catch (error) {
       console.error('💥 Error in getAllTicket:', error);
-
-      // ✅ ส่ง JSON object แทนข้อความ string
-      return {
-        success: false,
-        message: error?.message || 'Unexpected error in getAllTicket',
-        pagination: null,
-        data: [],
-      };
+      return { success: false, message: error?.message || 'Unexpected error', pagination: null, data: [] };
     }
   }
 
+  // ดึง priority ddl
+  @Post('getPriorityDDL')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('assign_ticket')
+  async getPriorityDDL() {
+    try {
+      console.log('📋 === getPriorityDDL Debug ===');
+    } catch (error) {
+      console.error('💥 Error in getPriorityDDL:', error);
+      throw new HttpException('เกิดข้อผิดพลาดในระบบ', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
 
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('solve_problem', 'change_status')
