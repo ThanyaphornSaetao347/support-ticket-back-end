@@ -33,6 +33,7 @@ import { Repository } from 'typeorm';
 import { RequireAnyAction } from '../permission/permission.decorator';
 import { PermissionGuard } from '../permission/permission.guard';
 import { CategoryStatsDTO } from './dto/dashboard.dto';
+import { PermissionService } from '../permission/permission.service';
 
 @Controller('api')
 export class TicketController {
@@ -41,6 +42,7 @@ export class TicketController {
     private readonly ticketRepo: Repository<Ticket>,
     private readonly ticketService: TicketService,
     private readonly ticketStatusService: TicketStatusService,
+    private readonly permissionService: PermissionService,
   ) { }
 
   // ✅ เพิ่ม Language Detection Methods
@@ -185,70 +187,39 @@ export class TicketController {
     }
   }
 
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('create_ticket', 'solve_problem', 'create_user')
   @Get('dashboard')
-  async getDashboardStats() {
+  async getDashboardStats(
+    @Query('userId') userId: number,
+    @Req() req,
+  ) {
     try {
+      // ✅ ดึง user จาก JWT (JwtAuthGuard จะ inject req.user ให้อัตโนมัติ)
+      const user = req.user || {};
+      const userId = user.userId || user.id || user.user_id || user.sub;
+
+      console.log('🔍 Fetching dashboard statistics for userId:', userId);
       console.log('🔍 Fetching dashboard statistics...');
 
-      // รวม query แบบ parallel
-      const [total, newTickets, inProgress, complete] = await Promise.all([
-        this.ticketRepo.find(),
-        this.ticketRepo.find({
-          where: { status_id: 1 },
-          select: ['id', 'create_date', 'update_date'],
-        }),
-        this.ticketRepo.find({ where: { status_id: 3 } }),
-        this.ticketRepo.find({
-          where: { status_id: 5 },
-          select: ['id', 'create_date', 'update_date'],
-        }),
-      ]);
-
-      const formatDates = (tickets: any[]) => tickets.map(t => ({
-        id: t.id,
-        createdAt: t.create_date,
-        completedAt: t.update_date,
-      }));
-
-      console.log('📊 Dashboard stats:', {
-        total: total.length,
-        new: newTickets.length,
-        inProgress: inProgress.length,
-        complete: complete.length
-      });
+      const data = await this.ticketService.getDashboardStatsByUserId(userId);
 
       return {
         code: '1',
         status: 1,
         message: 'Dashboard stats retrieved successfully',
-        data: {
-          total: total.length,
-          new: {
-            count: newTickets.length,
-            tickets: formatDates(newTickets)
-          },
-          inProgress: {
-            count: inProgress.length,
-            tickets: formatDates(inProgress)
-          },
-          complete: {
-            count: complete.length,
-            tickets: formatDates(complete)
-          },
-          updatedAt: new Date().toISOString()
-        }
+        data,
       };
     } catch (error) {
       console.error('❌ Error fetching dashboard stats:', error);
-
       throw new HttpException(
         {
           code: '0',
           status: 0,
           message: 'Failed to retrieve dashboard statistics',
-          error: error.message
+          error: error.message,
         },
-        HttpStatus.INTERNAL_SERVER_ERROR
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -358,7 +329,7 @@ export class TicketController {
         project_id: project_id ? Number(project_id) : undefined,
         categories_id: categories_id ? Number(categories_id) : undefined,
         priority: priority ? Number(priority) : undefined,
-        keyword: keyword ?.trim() || undefined,
+        keyword: keyword?.trim() || undefined,
         // date_start,
         // date_end,
       };

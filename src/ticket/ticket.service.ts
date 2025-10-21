@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Ticket } from './entities/ticket.entity';
@@ -1498,4 +1498,94 @@ export class TicketService {
       return null;
     }
   }
+
+  async getDashboardStatsByUserId(userId: number) {
+    try {
+      console.log('📊 [Dashboard] Checking permissions for user:', userId);
+
+      // 1️⃣ ดึงรายการ permission ทั้งหมดของผู้ใช้ (เป็น array ของ role_id หรือ permission_id)
+      const userPermissions: number[] = await this.checkUserPermissions(userId);
+
+      // 2️⃣ ตรวจสอบสิทธิ์เพิ่มเติมผ่าน permissionService
+      const canViewAllTickets = userPermissions.includes(19);
+      const canViewAssigned = userPermissions.includes(8);  // Supporter
+      const canViewOwn = userPermissions.includes(1);       // Reporter
+
+      console.log('🧩 Permission Flags:', {
+        canViewAllTickets,
+        canViewAssigned,
+        canViewOwn,
+      });
+
+      // ✅ Base Query
+      const baseQuery = this.ticketRepo.createQueryBuilder('t');
+
+      // ✅ สร้างเงื่อนไขตามสิทธิ์
+      if (canViewAllTickets) {
+        console.log('🟢 View all tickets (Admin / Assign Ticket)');
+        // ไม่กรอง
+      } else if (canViewAssigned) {
+        console.log('🟡 View only assigned tickets (Supporter)');
+        baseQuery
+          .innerJoin('ticket_assigned', 'ta', 'ta.ticket_id = t.id')
+          .andWhere('ta.user_id = :userId', { userId });
+      } else if (canViewOwn) {
+        console.log('🔵 View own tickets (Reporter)');
+        baseQuery.where('t.create_by = :userId', { userId });
+      } else {
+        console.log('🔴 No permission roles for dashboard');
+        return this.emptyDashboard('No permission roles found');
+      }
+
+      // ✅ Query สถิติแต่ละสถานะ (ใช้ clone)
+      const [total, newTickets, inProgress, complete] = await Promise.all([
+        baseQuery.clone().getMany(),
+        baseQuery.clone().andWhere('t.status_id = :s1', { s1: 1 }).getMany(),
+        baseQuery.clone().andWhere('t.status_id = :s3', { s3: 3 }).getMany(),
+        baseQuery.clone().andWhere('t.status_id = :s5', { s5: 5 }).getMany(),
+      ]);
+
+      // ✅ Helper แปลงข้อมูลวันที่
+      const formatDates = (tickets: any[]) =>
+        tickets.map(t => ({
+          id: t.id,
+          createdAt: t.create_date,
+          completedAt: t.update_date,
+        }));
+
+      // ✅ Return รูปแบบเดียวกับเดิม
+      return {
+        total: total.length,
+        new: { count: newTickets.length, tickets: formatDates(newTickets) },
+        inProgress: { count: inProgress.length, tickets: formatDates(inProgress) },
+        complete: { count: complete.length, tickets: formatDates(complete) },
+        updatedAt: new Date().toISOString(),
+      };
+
+    } catch (error) {
+      console.error('❌ Error in getDashboardStatsByUserId:', error);
+      throw new HttpException(
+        {
+          code: '0',
+          status: 0,
+          message: 'Failed to retrieve dashboard statistics',
+          error: error.message,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // 🧰 ฟังก์ชันช่วยคืนค่า dashboard ว่าง (กัน crash)
+  private emptyDashboard(message: string) {
+    return {
+      total: 0,
+      new: { count: 0, tickets: [] },
+      inProgress: { count: 0, tickets: [] },
+      complete: { count: 0, tickets: [] },
+      updatedAt: new Date().toISOString(),
+      note: message,
+    };
+  }
+
 }
