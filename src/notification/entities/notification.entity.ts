@@ -3,7 +3,7 @@ import { TicketStatus } from "../../ticket_status/entities/ticket_status.entity"
 import { Users } from "../../users/entities/user.entity";
 import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from "typeorm";
 
-export enum NotificationType{
+export enum NotificationType {
     NEW_TICKET = 'new_ticket',
     STATUS_CHANGE = 'status_change',
     ASSIGNMENT = 'assignment',
@@ -53,12 +53,12 @@ export class Notification {
     @UpdateDateColumn()
     update_date: Date;
 
-    @ManyToOne(() => Users, { eager: true})
+    @ManyToOne(() => Users, { eager: true })
     @JoinColumn({ name: 'user_id' })
     user: Users;
 
-    @ManyToOne(() => Ticket, { eager: true})
-    @JoinColumn({ name: 'ticket_no' })
+    @ManyToOne(() => Ticket, { eager: true })
+    @JoinColumn({ name: 'ticket_no', referencedColumnName: 'ticket_no' })
     ticket: Ticket;
 
     @ManyToOne(() => TicketStatus, { eager: false, nullable: true })

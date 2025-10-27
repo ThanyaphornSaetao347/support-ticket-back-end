@@ -1,4 +1,5 @@
 import { IsString, IsOptional, IsObject } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class HtmlToPdfDto {
   @IsString()
@@ -28,9 +29,14 @@ export class HtmlToPdfDto {
   @IsString()
   issueDescription: string;
 
+  // ✅ รองรับทั้ง string เดี่ยวและ array
   @IsOptional()
-  @IsString()
-  attachmentUrl?: string;
+  @Transform(({ value }) => {
+    if (Array.isArray(value)) return value.map(v => String(v));
+    if (typeof value === 'string') return [value];
+    return [];
+  })
+  attachmentUrl?: string[];
 
   @IsString()
   assignee: string;

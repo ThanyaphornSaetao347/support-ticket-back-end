@@ -43,6 +43,7 @@ export class UserController {
     return await this.userService.create(createUserDto, createUserAllowRoleDto);
   }
 
+  // ใช้ตรงรายการหน้า user account
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAction('create_user')
   @Get('account')
@@ -50,11 +51,19 @@ export class UserController {
     return this.userService.userAccount();
   }
 
+  // 
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAction('create_user')
   @Get('Allusers')
   async allUsers() {
     return this.userService.getAllUser();
+  }
+
+  // ใช้ตรงดึงข้อมูลออกไปแสเงในหน้า my profile
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @Get(':id')
+  async getUserById(@Param('id') id: number) {
+    return this.userService.getUserAccountById(+id);
   }
 
   @Patch('update/:id')

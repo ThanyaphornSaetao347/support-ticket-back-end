@@ -29,20 +29,15 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { CreateSatisfactionDto } from '../satisfaction/dto/create-satisfaction.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Ticket } from './entities/ticket.entity';
-import { Repository } from 'typeorm';
 import { RequireAnyAction } from '../permission/permission.decorator';
 import { PermissionGuard } from '../permission/permission.guard';
 import { CategoryStatsDTO } from './dto/dashboard.dto';
-import { PermissionService } from '../permission/permission.service';
 
 @Controller('api')
 export class TicketController {
   constructor(
-    @InjectRepository(Ticket)
-    private readonly ticketRepo: Repository<Ticket>,
     private readonly ticketService: TicketService,
     private readonly ticketStatusService: TicketStatusService,
-    private readonly permissionService: PermissionService,
   ) { }
 
   // ✅ เพิ่ม Language Detection Methods
@@ -224,21 +219,28 @@ export class TicketController {
     }
   }
 
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('create_ticket', 'solve_problem', 'create_user')
   @Get('summaryCategories')
   async getCategoryBreakdown(
-    @Request() req: any, // required parameter มาก่อน
+    @Request() req: any,
     @Query('year') year?: string,
-    @Query('month') month?: string,
     @Query('userId') userId?: string,
   ): Promise<CategoryStatsDTO[]> {
     const currentYear = year ? parseInt(year) : new Date().getFullYear();
-    const currentMonth = month ? parseInt(month) : new Date().getMonth() + 1;
-    const targetUserId = userId ? parseInt(userId) : req.user?.id;
 
-    return this.ticketService.getCategoryBreakdown(
-      currentYear,
-      currentMonth,
+    // ✅ ดึง userId จาก token ถ้า frontend ไม่ส่งมา
+    const targetUserId = userId ? parseInt(userId) : (
+      req.user?.id || req.user?.userId || req.user?.user_id || req.user?.sub
     );
+
+    console.log('📊 [Controller] getCategoryBreakdown called:', {
+      currentYear,
+      targetUserId,
+    });
+
+    // ✅ ส่งค่า year และ userId ให้ service
+    return this.ticketService.getCategoryBreakdown(currentYear, targetUserId);
   }
 
   @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -357,6 +359,8 @@ export class TicketController {
   async getPriorityDDL() {
     try {
       console.log('📋 === getPriorityDDL Debug ===');
+      const result = await this.ticketService.getPriorityDdl(); // ✅ เรียกใช้ service
+      return result;
     } catch (error) {
       console.error('💥 Error in getPriorityDDL:', error);
       throw new HttpException('เกิดข้อผิดพลาดในระบบ', HttpStatus.INTERNAL_SERVER_ERROR);
@@ -437,7 +441,6 @@ export class TicketController {
       );
     }
   }
-
 
   @UseGuards(JwtAuthGuard, PermissionGuard)
   @RequireAnyAction('read_all_project', 'get_all_master_fillter')
@@ -828,5 +831,15 @@ export class TicketController {
         data: null
       };
     }
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @RequireAnyAction('assign_ticket')
+  @Get('getTicketRelate')
+  async getRelatedTickets(
+    @Query('project_id') project_id: number,
+    @Query('categories_id') categories_id: number,
+  ){
+    return this.ticketService.getRelatedTickets(project_id, categories_id);
   }
 }

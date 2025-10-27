@@ -7,8 +7,8 @@ import { Ticket } from '../ticket/entities/ticket.entity';
 import { DataSource, Repository } from 'typeorm';
 import { TicketStatusLanguage } from '../ticket_status_language/entities/ticket_status_language.entity';
 import { TicketStatusHistoryService } from '../ticket_status_history/ticket_status_history.service';
-import { Notification } from '../notification/entities/notification.entity';
 import { NotificationService } from '../notification/notification.service';
+import { PermissionService } from '../permission/permission.service';
 
 @Injectable()
 export class TicketStatusService {
@@ -22,33 +22,60 @@ export class TicketStatusService {
     private readonly statusLangRepo: Repository<TicketStatusLanguage>,
 
     private readonly notiService: NotificationService,
+    private readonly permissionService: PermissionService,
     private dataSource: DataSource,
-  ){}
+  ) { }
 
-  async getStatusDDL(languageId?: string) {
+  // เพิ่ม method นี้
+  async checkUserPermissions(userId: number): Promise<number[]> {
+    const rows = await this.dataSource.query(
+      'SELECT role_id FROM users_allow_role WHERE user_id = $1',
+      [userId]
+    );
+    // rows = [{ role_id: 1 }, { role_id: 2 }, ...]
+    const roleIds = rows.map(r => r.role_id);
+    return roleIds;
+  }
+
+  async getStatusDDL(userId: number, languageId?: string) {
     try {
       console.log('Received languageId:', languageId);
 
-      // ใช้ raw SQL query แทน relation
+      const userPermissions: number[] = await this.checkUserPermissions(userId);
+      const adminChangeStatus = await this.permissionService.canAssignTicket(userId, userPermissions);
+      const supportChangeStatus = await this.permissionService.canSolveProblem(userId, userPermissions);
+
       let queryBuilder = this.statusLangRepo
         .createQueryBuilder('tsl')
-        .innerJoin('ticket_status', 'ts', 'ts.id = tsl.status_id'); // แก้ JOIN condition
-      
+        .innerJoin('ticket_status', 'ts', 'ts.id = tsl.status_id');
+
       if (languageId && languageId.trim() !== '') {
-        queryBuilder = queryBuilder.where('tsl.language_id = :languageId', { 
-          languageId: languageId.trim() 
+        queryBuilder = queryBuilder.where('tsl.language_id = :languageId', {
+          languageId: languageId.trim(),
         });
+      }
+
+      // ✅ เงื่อนไขกรองสถานะตามสิทธิ์
+      if (adminChangeStatus) {
+        queryBuilder = queryBuilder.andWhere('ts.id IN (:...statusIds)', { statusIds: [2, 6] });
+      } else if (supportChangeStatus) {
+        queryBuilder = queryBuilder.andWhere('ts.id IN (:...statusIds)', { statusIds: [3, 4, 5] });
+      } else {
+        // ❌ ไม่มีสิทธิ์ใด ๆ
+        return {
+          code: 0,
+          message: 'You do not have permission to view statuses.', // 👈 เปลี่ยนข้อความตรงนี้
+          data: [],
+        };
       }
 
       const results = await queryBuilder
         .select([
-          'ts.id as ts_id', 
+          'ts.id as ts_id',
           'tsl.name as tsl_name',
-          'tsl.language_id as tsl_language_id'
+          'tsl.language_id as tsl_language_id',
         ])
         .getRawMany();
-
-      console.log('Fixed Query results:', results);
 
       return {
         code: 1,
@@ -70,241 +97,241 @@ export class TicketStatusService {
   }
 
   async createStatus(creaateStatusDto: CreateTicketStatusDto) {
-      try {
-        // ตรวจสอบความซ้ำซ้อนของชื่อ category ในแต่ละภาษา
-        for (const lang of creaateStatusDto.statusLang) {
-          const existingStatus = await this.statusLangRepo
-            .createQueryBuilder('tsl')
-            .innerJoin('tsl.status', 'ts')
-            .where('LOWER(tsl.name) = LOWER(:name)', { name: lang.name.trim() })
-            .andWhere('tsl.language_id = :languageId', { languageId: lang.language_id })
-            .andWhere('ts.isenabled = :enabled', { enabled: true })
-            .getOne();
-  
-          if (existingStatus) {
-            return {
-              code: 0,
-              message: `Status name "${lang.name}" already exists for language "${lang.language_id}"`,
-              data: {
-                existing_category: {
-                  id: existingStatus.status_id,
-                  name: existingStatus.name,
-                  language_id: existingStatus.language_id,
-                },
+    try {
+      // ตรวจสอบความซ้ำซ้อนของชื่อ category ในแต่ละภาษา
+      for (const lang of creaateStatusDto.statusLang) {
+        const existingStatus = await this.statusLangRepo
+          .createQueryBuilder('tsl')
+          .innerJoin('tsl.status', 'ts')
+          .where('LOWER(tsl.name) = LOWER(:name)', { name: lang.name.trim() })
+          .andWhere('tsl.language_id = :languageId', { languageId: lang.language_id })
+          .andWhere('ts.isenabled = :enabled', { enabled: true })
+          .getOne();
+
+        if (existingStatus) {
+          return {
+            code: 0,
+            message: `Status name "${lang.name}" already exists for language "${lang.language_id}"`,
+            data: {
+              existing_category: {
+                id: existingStatus.status_id,
+                name: existingStatus.name,
+                language_id: existingStatus.language_id,
               },
-            };
-          }
-        }
-        // ตรวจสอบซ้ำในชุดข้อมูลที่ส่งมา (ป้องกันการส่งภาษาเดียวกันซ้ำ)
-        const languageIds = creaateStatusDto.statusLang.map(lang => lang.language_id);
-        const uniqueLanguageIds = [...new Set(languageIds)];
-        if (languageIds.length !== uniqueLanguageIds.length) {
-          return {
-            code: 0,
-            message: 'Duplicate language_id found in the request',
+            },
           };
         }
-  
-        // ตรวจสอบชื่อซ้ำในชุดข้อมูลเดียวกัน
-        const names = creaateStatusDto.statusLang.map(lang => 
-          `${lang.language_id}:${lang.name.toLowerCase().trim()}`
-        );
-        const uniqueNames = [...new Set(names)];
-        if (names.length !== uniqueNames.length) {
-          return {
-            code: 0,
-            message: 'Duplicate category name found in the same language within the request',
-          };
-        }
-  
-        // สร้าง category หลัก
-        const tstatus = this.statusRepo.create({
-          create_by: creaateStatusDto.create_by,
-          create_date: new Date(),
-          isenabled: true,
-        });
-        const savedStatus = await this.statusRepo.save(tstatus);
-  
-        // สร้าง language records สำหรับแต่ละภาษา
-        const languagePromises = creaateStatusDto.statusLang.map(async (lang) => {
-          const statusLang = this.statusLangRepo.create({
-            status_id: savedStatus.id,
-            language_id: lang.language_id.trim(),
-            name: lang.name.trim(),
-          });
-          return await this.statusLangRepo.save(statusLang);
-        });
-  
-        const savedLanguages = await Promise.all(languagePromises);
-  
-        return {
-          code: 1,
-          message: 'Status created successfully',
-          data: {
-            id: savedStatus.id,
-            create_by: savedStatus.create_by,
-            create_date: savedStatus.create_date,
-            isenabled: savedStatus.isenabled,
-            languages: savedLanguages.map(lang => ({
-              id: lang.status_id,
-              language_id: lang.language_id,
-              name: lang.name,
-            })),
-          },
-        };
-      } catch (error) {
-        return {
-          code: 0,
-          message: 'Failed to create category',
-          error: error.message,
-        };
       }
-    }
-  
-    // Method สำหรับ backward compatibility (ถ้าจำเป็น)
-    async createCategoryOld(body: {
-      isenabled: boolean;
-      create_by: number;
-      language_id: string;
-      name: string;
-    }) {
-      // ticketcategories table
-      const tstatus = this.statusRepo.create({
-        isenabled: body.isenabled,
-        create_by: body.create_by,
-        create_date: new Date(),
-      });
-      const savedCategory = await this.statusRepo.save(tstatus);
-  
-      // language table
-      const categoryLang = this.statusLangRepo.create({
-        status_id: savedCategory.id,
-        language_id: body.language_id,
-        name: body.name,
-      });
-      await this.statusLangRepo.save(categoryLang);
-  
-      return {
-        code: 1,
-        message: 'Category created successfully',
-        data: {
-          id: savedCategory.id,
-          name: categoryLang.name,
-        },
-      };
-    }
-  
-    async findAll() {
-      const statuS = await this.statusRepo.find({
-        relations: ['languages'],
-        where: { isenabled: true },
-      });
-  
-      return {
-        code: 1,
-        message: 'Success',
-        data: statuS,
-      };
-    }
-  
-    async findOne(id: number) {
-      const category = await this.statusRepo.findOne({
-        where: { id, isenabled: true },
-        relations: ['languages'],
-      });
-  
-      if (!category) {
-        return {
-          code: 0,
-          message: 'Category not found',
-        };
-      }
-  
-      return {
-        code: 1,
-        message: 'Success',
-        data: category,
-      };
-    }
-  
-    // Method สำหรับตรวจสอบว่าชื่อ category ซ้ำหรือไม่
-    async checkCategoryNameExists(name: string, languageId: string, excludeStatusId?: number) {
-      const query = this.statusLangRepo
-        .createQueryBuilder('tsl')
-        .innerJoin('tcl.status', 'ts')
-        .where('LOWER(tsl.name) = LOWER(:name)', { name: name.trim() })
-        .andWhere('tsl.language_id = :languageId', { languageId })
-        .andWhere('ts.isenabled = :enabled', { enabled: true });
-  
-      // ถ้ามี excludeCategoryId แสดงว่าเป็นการ update ให้ไม่เช็คกับตัวเอง
-      if (excludeStatusId) {
-        query.andWhere('tc.id != :excludeId', { excludeId: excludeStatusId });
-      }
-  
-      const existing = await query.getOne();
-      return !!existing;
-    }
-  
-    // Method สำหรับ validate ข้อมูลก่อนสร้าง/อัพเดต
-    async validateCategoryData(languages: { language_id: string; name: string }[], excludeStatusId?: number) {
-      const errors: string[] = [];
-  
-      // ตรวจสอบซ้ำในฐานข้อมูล
-      for (const lang of languages) {
-        const isDuplicate = await this.checkCategoryNameExists(
-          lang.name, 
-          lang.language_id, 
-          excludeStatusId
-        );
-        
-        if (isDuplicate) {
-          errors.push(`Status name "${lang.name}" already exists for language "${lang.language_id}"`);
-        }
-      }
-  
-      // ตรวจสอบซ้ำในชุดข้อมูลที่ส่งมา
-      const languageIds = languages.map(lang => lang.language_id);
+      // ตรวจสอบซ้ำในชุดข้อมูลที่ส่งมา (ป้องกันการส่งภาษาเดียวกันซ้ำ)
+      const languageIds = creaateStatusDto.statusLang.map(lang => lang.language_id);
       const uniqueLanguageIds = [...new Set(languageIds)];
       if (languageIds.length !== uniqueLanguageIds.length) {
-        errors.push('Duplicate language_id found in the request');
+        return {
+          code: 0,
+          message: 'Duplicate language_id found in the request',
+        };
       }
-  
+
       // ตรวจสอบชื่อซ้ำในชุดข้อมูลเดียวกัน
-      const names = languages.map(lang => 
+      const names = creaateStatusDto.statusLang.map(lang =>
         `${lang.language_id}:${lang.name.toLowerCase().trim()}`
       );
       const uniqueNames = [...new Set(names)];
       if (names.length !== uniqueNames.length) {
-        errors.push('Duplicate status name found in the same language within the request');
-      }
-  
-      return errors;
-    }
-  
-    // Debug method เพื่อตรวจสอบข้อมูล
-    async debugStatusData() {
-      try {
-        const statuS = await this.statusRepo.find();
-        const statusLanguages = await this.statusLangRepo.find();
-  
-        return {
-          code: 1,
-          message: 'Debug data retrieved',
-          data: {
-            status: statuS,
-            statusLanguages: statusLanguages,
-            statussCount: statuS.length,
-            languagesCount: statusLanguages.length,
-          },
-        };
-      } catch (error) {
         return {
           code: 0,
-          message: 'Failed to retrieve debug data',
-          error: error.message,
+          message: 'Duplicate category name found in the same language within the request',
         };
       }
+
+      // สร้าง category หลัก
+      const tstatus = this.statusRepo.create({
+        create_by: creaateStatusDto.create_by,
+        create_date: new Date(),
+        isenabled: true,
+      });
+      const savedStatus = await this.statusRepo.save(tstatus);
+
+      // สร้าง language records สำหรับแต่ละภาษา
+      const languagePromises = creaateStatusDto.statusLang.map(async (lang) => {
+        const statusLang = this.statusLangRepo.create({
+          status_id: savedStatus.id,
+          language_id: lang.language_id.trim(),
+          name: lang.name.trim(),
+        });
+        return await this.statusLangRepo.save(statusLang);
+      });
+
+      const savedLanguages = await Promise.all(languagePromises);
+
+      return {
+        code: 1,
+        message: 'Status created successfully',
+        data: {
+          id: savedStatus.id,
+          create_by: savedStatus.create_by,
+          create_date: savedStatus.create_date,
+          isenabled: savedStatus.isenabled,
+          languages: savedLanguages.map(lang => ({
+            id: lang.status_id,
+            language_id: lang.language_id,
+            name: lang.name,
+          })),
+        },
+      };
+    } catch (error) {
+      return {
+        code: 0,
+        message: 'Failed to create category',
+        error: error.message,
+      };
     }
+  }
+
+  // Method สำหรับ backward compatibility (ถ้าจำเป็น)
+  async createCategoryOld(body: {
+    isenabled: boolean;
+    create_by: number;
+    language_id: string;
+    name: string;
+  }) {
+    // ticketcategories table
+    const tstatus = this.statusRepo.create({
+      isenabled: body.isenabled,
+      create_by: body.create_by,
+      create_date: new Date(),
+    });
+    const savedCategory = await this.statusRepo.save(tstatus);
+
+    // language table
+    const categoryLang = this.statusLangRepo.create({
+      status_id: savedCategory.id,
+      language_id: body.language_id,
+      name: body.name,
+    });
+    await this.statusLangRepo.save(categoryLang);
+
+    return {
+      code: 1,
+      message: 'Category created successfully',
+      data: {
+        id: savedCategory.id,
+        name: categoryLang.name,
+      },
+    };
+  }
+
+  async findAll() {
+    const statuS = await this.statusRepo.find({
+      relations: ['languages'],
+      where: { isenabled: true },
+    });
+
+    return {
+      code: 1,
+      message: 'Success',
+      data: statuS,
+    };
+  }
+
+  async findOne(id: number) {
+    const category = await this.statusRepo.findOne({
+      where: { id, isenabled: true },
+      relations: ['languages'],
+    });
+
+    if (!category) {
+      return {
+        code: 0,
+        message: 'Category not found',
+      };
+    }
+
+    return {
+      code: 1,
+      message: 'Success',
+      data: category,
+    };
+  }
+
+  // Method สำหรับตรวจสอบว่าชื่อ category ซ้ำหรือไม่
+  async checkCategoryNameExists(name: string, languageId: string, excludeStatusId?: number) {
+    const query = this.statusLangRepo
+      .createQueryBuilder('tsl')
+      .innerJoin('tcl.status', 'ts')
+      .where('LOWER(tsl.name) = LOWER(:name)', { name: name.trim() })
+      .andWhere('tsl.language_id = :languageId', { languageId })
+      .andWhere('ts.isenabled = :enabled', { enabled: true });
+
+    // ถ้ามี excludeCategoryId แสดงว่าเป็นการ update ให้ไม่เช็คกับตัวเอง
+    if (excludeStatusId) {
+      query.andWhere('tc.id != :excludeId', { excludeId: excludeStatusId });
+    }
+
+    const existing = await query.getOne();
+    return !!existing;
+  }
+
+  // Method สำหรับ validate ข้อมูลก่อนสร้าง/อัพเดต
+  async validateCategoryData(languages: { language_id: string; name: string }[], excludeStatusId?: number) {
+    const errors: string[] = [];
+
+    // ตรวจสอบซ้ำในฐานข้อมูล
+    for (const lang of languages) {
+      const isDuplicate = await this.checkCategoryNameExists(
+        lang.name,
+        lang.language_id,
+        excludeStatusId
+      );
+
+      if (isDuplicate) {
+        errors.push(`Status name "${lang.name}" already exists for language "${lang.language_id}"`);
+      }
+    }
+
+    // ตรวจสอบซ้ำในชุดข้อมูลที่ส่งมา
+    const languageIds = languages.map(lang => lang.language_id);
+    const uniqueLanguageIds = [...new Set(languageIds)];
+    if (languageIds.length !== uniqueLanguageIds.length) {
+      errors.push('Duplicate language_id found in the request');
+    }
+
+    // ตรวจสอบชื่อซ้ำในชุดข้อมูลเดียวกัน
+    const names = languages.map(lang =>
+      `${lang.language_id}:${lang.name.toLowerCase().trim()}`
+    );
+    const uniqueNames = [...new Set(names)];
+    if (names.length !== uniqueNames.length) {
+      errors.push('Duplicate status name found in the same language within the request');
+    }
+
+    return errors;
+  }
+
+  // Debug method เพื่อตรวจสอบข้อมูล
+  async debugStatusData() {
+    try {
+      const statuS = await this.statusRepo.find();
+      const statusLanguages = await this.statusLangRepo.find();
+
+      return {
+        code: 1,
+        message: 'Debug data retrieved',
+        data: {
+          status: statuS,
+          statusLanguages: statusLanguages,
+          statussCount: statuS.length,
+          languagesCount: statusLanguages.length,
+        },
+      };
+    } catch (error) {
+      return {
+        code: 0,
+        message: 'Failed to retrieve debug data',
+        error: error.message,
+      };
+    }
+  }
 
   // ✅ อัพเดท method ที่มีอยู่แล้ว - เพิ่ม notification
   async updateTicketStatusAndHistory(
@@ -358,14 +385,14 @@ export class TicketStatusService {
 
       // ✅ บันทึก status history
       let history: any = null;
-      
+
       const historyData = {
         ticket_id: ticketId,
         status_id: newStatusId,
         create_by: userId,
         create_date: now,
-        comment: comment || (oldStatusId !== newStatusId ? 
-          `Status changed from ${oldStatusId} to ${newStatusId}` : 
+        comment: comment || (oldStatusId !== newStatusId ?
+          `Status changed from ${oldStatusId} to ${newStatusId}` :
           `Status update to ${newStatusId}`),
       };
 
@@ -599,9 +626,9 @@ export class TicketStatusService {
 
   // ✅ เพิ่มใน TicketStatusService
 
-// 1️⃣ ดึง status ของ ticket เดี่ยว
+  // 1️⃣ ดึง status ของ ticket เดี่ยว
   async getTicketStatusWithName(
-    ticketId: number, 
+    ticketId: number,
     languageId: string = 'th'
   ): Promise<{
     ticket_id: number;

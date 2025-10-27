@@ -217,6 +217,12 @@ export class HtmlToPdfService {
       justify-content: space-between;
       font-size: 10px;
     }
+    .attachment-container {
+      display: flex;
+      flex-wrap: wrap;       /* ถ้ามีหลายรูปจะขึ้นบรรทัดใหม่อัตโนมัติ */
+      gap: 10px;             /* ระยะห่างระหว่างรูป */
+      margin-top: 5px;
+    }
   </style>
 </head>
 <body>
@@ -258,13 +264,20 @@ export class HtmlToPdfService {
       <p><strong>คำอธิบาย:</strong> ${issueDescription}</p>
       <p>
         <strong>Attachment:</strong><br/>
-        ${
-          attachmentUrl
-            ? `<div class="attachment-box">
-                  <img src="${attachmentUrl}" alt="Attachment" />
+        ${(attachmentUrl && attachmentUrl.length)
+        ? `<div class="attachment-container">
+        ${attachmentUrl
+          .map(
+            url => `
+              <div class="attachment-box">
+                <img src="${url}" alt="Attachment" />
               </div>`
-            : 'ไม่พบไฟล์แนบ (Error 404 Not Found)'
-        }
+          )
+          .join('')}
+      </div>`
+        : 'ไม่พบไฟล์แนบ (Error 404 Not Found)'
+      }
+
       </p>
     </div>
 
@@ -320,10 +333,10 @@ export class HtmlToPdfService {
 
   async generatePdf(data: HtmlToPdfDto): Promise<Buffer> {
     let browser: puppeteer.Browser | null = null;
-    
+
     try {
       const htmlContent = this.generateHtmlTemplate(data);
-      
+
       browser = await puppeteer.launch({
         headless: true,
         args: [
@@ -338,10 +351,10 @@ export class HtmlToPdfService {
       });
 
       const page = await browser.newPage();
-      
-      await page.setContent(htmlContent, { 
+
+      await page.setContent(htmlContent, {
         waitUntil: 'networkidle0',
-        timeout: 30000 
+        timeout: 30000
       });
 
       const pdfBuffer = await page.pdf({

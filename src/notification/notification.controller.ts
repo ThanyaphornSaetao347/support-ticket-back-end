@@ -344,7 +344,7 @@ export class NotificationController {
 
   // ✅ Fixed: Mark single notification as read (was calling markAllAsRead)
   @UseGuards(JwtAuthGuard)
-  @Put('markAsRead/:id')
+  @Patch('markAsRead/:id')
   async markAsRead(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     try {
       const userId = this.extractUserId(req);
@@ -376,7 +376,7 @@ export class NotificationController {
 
   // ✅ Mark all notifications as read
   @UseGuards(JwtAuthGuard)
-  @Put('notification/read-all')
+  @Patch('read-all')
   async markAllRead(@Req() req: any) {
     try {
       const userId = this.extractUserId(req);

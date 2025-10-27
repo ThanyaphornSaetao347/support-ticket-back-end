@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -57,6 +57,11 @@ export class NotificationService {
         console.log('📨 Processing new ticket notification...');
         const newTicketNotis = await this.createNewTicketNotification(ticketNo);
         notifications.push(...newTicketNotis);
+
+        // ✅ ส่งไป frontend
+        for (const noti of newTicketNotis) {
+          await this.notificationGateway.sendNotificationToUser(noti.user_id, noti);
+        }
       }
 
       // 2️⃣ อัพเดทสถานะ
@@ -65,6 +70,9 @@ export class NotificationService {
         const statusChangeNoti = await this.createStatusChangeNotification(ticketNo, statusId);
         if (statusChangeNoti) {
           notifications.push(statusChangeNoti);
+
+          // ✅ ส่งไป frontend
+          await this.notificationGateway.sendNotificationToUser(statusChangeNoti.user_id, statusChangeNoti);
         }
       }
 
@@ -74,6 +82,8 @@ export class NotificationService {
         const assignmentNoti = await this.createAssignmentNotification(ticketNo, assignedUserId);
         if (assignmentNoti) {
           notifications.push(assignmentNoti);
+          // ✅ ส่งไป frontend
+          await this.notificationGateway.sendNotificationToUser(assignedUserId, assignmentNoti);
         }
       }
 
@@ -94,10 +104,10 @@ export class NotificationService {
       create_date: new Date()
     });
     const savedNotification = await this.notiRepo.save(notification);
-    
+
     // ส่ง WebSocket notification ทันที
     await this.sendWebSocketNotification(savedNotification);
-    
+
     return savedNotification;
   }
 
@@ -275,7 +285,7 @@ export class NotificationService {
           notifications.push(savedNotification);
 
           // ส่ง WebSocket notification
-      await this.sendWebSocketNotification(savedNotification);
+          await this.sendWebSocketNotification(savedNotification);
 
           // ส่ง email แบบ async
           this.sendEmailNotification(savedNotification).catch(error => {
@@ -1039,31 +1049,39 @@ export class NotificationService {
   // แก้ไข markAsRead ให้อัพเดท WebSocket
   async markAsRead(notificationId: number, userId: number) {
     try {
+      // ✅ 1. ดึง notification จาก id
       const notification = await this.notiRepo.findOne({
-        where: { id: notificationId, user_id: userId }
+        where: { id: notificationId },
       });
 
+      // ✅ 2. ตรวจสอบว่ามีอยู่จริงไหม
       if (!notification) {
-        throw new NotFoundException('Notification not found or access denied');
+        throw new NotFoundException('ไม่พบการแจ้งเตือนที่ระบุ');
       }
 
-      if (notification.is_read) {
-        return notification;
+      // ✅ 3. ตรวจสอบว่าเป็นของ user คนนี้หรือไม่
+      if (notification.user_id !== userId) {
+        throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงการแจ้งเตือนนี้');
       }
 
-      await this.notiRepo.update(notificationId, {
-        is_read: true,
-        read_at: new Date()
-      });
+      // ✅ 4. ถ้ายังไม่ได้อ่าน → อัปเดตสถานะเป็นอ่านแล้ว
+      if (!notification.is_read) {
+        await this.notiRepo.update(notificationId, {
+          is_read: true,
+          read_at: new Date(),
+        });
+      }
 
-      // อัพเดท unread count ผ่าน WebSocket
+      // ✅ 5. อัปเดตจำนวน unread ผ่าน WebSocket
       const unreadCount = await this.getUnreadCount(userId);
       await this.notificationGateway.updateUnreadCount(userId, unreadCount);
 
+      // ✅ 6. คืนข้อมูลฉบับเต็มหลังอัปเดต
       return await this.notiRepo.findOne({
         where: { id: notificationId },
-        relations: ['user', 'ticket', 'status']
+        relations: ['user', 'ticket', 'status'],
       });
+
     } catch (error) {
       console.error('❌ Error marking notification as read:', error);
       throw error;
@@ -1089,20 +1107,21 @@ export class NotificationService {
   }
 
   // ✅ นับจำนวนการแจ้งเตือนที่ยังไม่ได้อ่าน
-  async getUnreadCount(userId: number): Promise<number> {
+  async getUnreadCount(user_id: number): Promise<number> {
     try {
-      if (!userId || userId <= 0) {
-        return 0;
-      }
-
-      return await this.notiRepo.count({
-        where: { user_id: userId, is_read: false }
+      const items = await this.notiRepo.find({
+        where: { is_read: false },
       });
+
+      console.log('🔍 Notifications in DB:', items);
+      return items.filter(n => n.user?.id === user_id).length;
     } catch (error) {
       console.error('❌ Error getting unread count:', error);
       return 0;
     }
   }
+
+
 
   // ✅ ดึงการแจ้งเตือนตามประเภท
   async getNotificationsByType(userId: number, type: NotificationType, page: number = 1, limit: number = 20) {

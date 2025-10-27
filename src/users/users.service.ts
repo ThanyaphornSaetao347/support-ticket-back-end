@@ -7,6 +7,8 @@ import { CreateUserDto } from './dto/create-user.dto'
 import * as bcrypt from 'bcrypt';
 import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
 import { CreateUserAllowRoleDto } from '../user_allow_role/dto/create-user_allow_role.dto';
+import { PermissionService } from '../permission/permission.service';
+import { UserAllowRoleService } from '../user_allow_role/user_allow_role.service';
 
 @Injectable()
 export class UserService {
@@ -15,6 +17,9 @@ export class UserService {
     private userRepository: Repository<Users>,
     @InjectRepository(UserAllowRole)
     private readonly userAllowRoleRepo: Repository<UserAllowRole>,
+
+    private readonly permissionService: PermissionService,
+    private readonly allowRoleService: UserAllowRoleService,
   ) { }
 
   async findByEmail(email: string): Promise<Users> {
@@ -130,22 +135,60 @@ export class UserService {
     }
   }
 
-  async getAllUser() {
-    try {
-      const userDDL = this.userRepository
-      .createQueryBuilder('u')
-      .select([
-        'u.id as id',
-        `u.firstname || \' \' || u.lastname as name`,
-        'u.email as email'
-      ])
-      .distinct(true)
-      .orderBy('u.id', 'ASC')
-      .getRawMany();
+  // 🧩 ดึง user ทั้งหมด (ไม่ต้องไปเรียกตัวเอง)
+  async getAllUser(): Promise<any[]> {
+  const users = await this.userRepository
+    .createQueryBuilder('u')
+    .where(qb => {
+      const subQuery = qb
+        .subQuery()
+        .select('uar.user_id')
+        .from('users_allow_role', 'uar')
+        .where('uar.role_id IN (:...excludedRoles)')
+        .getQuery();
 
-      return userDDL;
+      return `u.id NOT IN ${subQuery}`;
+    })
+    .setParameter('excludedRoles', [8, 15])
+    .select([
+      'u.id AS id',
+      `CONCAT(u.firstname, ' ', u.lastname) AS name`,
+      'u.email AS email',
+    ])
+    .orderBy('u.id', 'ASC')
+    .getRawMany();
+
+  return users;
+}
+
+  // 🧩 ดึง user ที่ไม่มี role 8,15
+  async getUsersWithoutRole8And15() {
+    try {
+      // ✅ ดึงผู้ใช้ทั้งหมด (จาก DB โดยตรง)
+      const allUsers = await this.userRepository.find({
+        select: ['id', 'firstname', 'lastname', 'email'],
+      });
+
+      // ✅ ดึงผู้ใช้ที่มี role 8 และ 15
+      const role8Users = await this.allowRoleService.getUsersByRole(8);
+      const role15Users = await this.allowRoleService.getUsersByRole(15);
+
+      // ✅ รวม id ที่ต้องตัดออก
+      const excludedIds = [
+        ...new Set([...role8Users.map(u => u.id), ...role15Users.map(u => u.id)]),
+      ];
+
+      // ✅ กรอง user ที่ไม่อยู่ใน excludedIds
+      const filteredUsers = allUsers.filter(u => !excludedIds.includes(u.id));
+
+      // ✅ จัดรูปข้อมูลให้ครบ
+      return filteredUsers.map(u => ({
+        id: u.id,
+        name: `${u.firstname || ''} ${u.lastname || ''}`.trim(),
+        email: u.email,
+      }));
     } catch (error) {
-      console.log('User DDL Error:', error)
+      console.error('❌ Error while fetching users without role 8,15:', error);
       throw error;
     }
   }
@@ -263,5 +306,32 @@ export class UserService {
       .distinct(true)
       .getRawMany();
     return account;
+  }
+
+  async getUserAccountById(user_id: number) {
+    try {
+      const account = await this.userRepository
+        .createQueryBuilder('u')
+        .select([
+          'u.id as id',
+          'u.username as username',
+          'u.firstname as firstname',
+          'u.lastname as lastname',
+          'u.email AS user_email',
+          'u.phone AS user_phone',
+        ])
+        .where('u.id = :user_id', { user_id })
+        .getRawOne();
+
+      return {
+        code: 1,
+        status: 'success',
+        message: 'pull user account by ID successfully',
+        data: account
+      }
+    } catch (error) {
+      console.log('Error fetching user account by ID:', error);
+      throw error;
+    }
   }
 }

@@ -14,7 +14,7 @@ import { Logger } from '@nestjs/common';
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // หรือ config ตาม frontend URL
+    origin: 'http://localhost:4200', // หรือ config ตาม frontend URL
     credentials: true,
   },
   namespace: '/notifications', // แยก namespace สำหรับ notifications

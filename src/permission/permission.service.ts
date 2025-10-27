@@ -148,7 +148,7 @@ export class PermissionService {
     return this.hasAnyRole(userId, [5, 13], userPermissions);
   }
   async canSolveProblem(userId: number, userPermissions: number[]): Promise<boolean> {
-    return this.hasAnyRole(userId, [8, 13], userPermissions);
+    return this.hasAnyRole(userId, [8], userPermissions);
   }
 
   async canCreateProject(userId: number, userPermissions: number[]): Promise<boolean> {

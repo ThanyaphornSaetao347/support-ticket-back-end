@@ -22,6 +22,7 @@ import { UserModule } from '../users/users.module';
 import { UserAllowRoleModule } from '../user_allow_role/user_allow_role.module';
 import { UserAllowRole } from '../user_allow_role/entities/user_allow_role.entity';
 import { TicketCategoriesModule } from '../ticket_categories/ticket_categories.module';
+import { TicketPriorityModule } from '../ticket_priority/ticket_priority.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { TicketCategoriesModule } from '../ticket_categories/ticket_categories.m
     UserModule,
     UserAllowRoleModule,
     TicketCategoriesModule,
+    TicketPriorityModule,
   ],
   controllers: [TicketController, TicketAttachmentController],
   providers: [

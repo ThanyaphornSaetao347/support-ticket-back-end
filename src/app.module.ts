@@ -37,10 +37,9 @@ import { Satisfaction } from './satisfaction/entities/satisfaction.entity';
 import { Notification } from './notification/entities/notification.entity';
 import { NotificationModule } from './notification/notification.module';
 import { PermissionModule } from './permission/permission.module';
-import { APP_GUARD } from '@nestjs/core';
-import { PermissionGuard } from './permission/permission.guard';
 import { HtmlToPdfModule } from './html-to-pdf/html-to-pdf.module';
 import { ExportExcelModule } from './export-excel/export-excel.module';
+import { TicketPriorityModule } from './ticket_priority/ticket_priority.module';
 
 
 @Module({
@@ -74,6 +73,7 @@ import { ExportExcelModule } from './export-excel/export-excel.module';
         Satisfaction,
         Notification
       ],
+      autoLoadEntities: true,
       synchronize: false,
     }),
     AuthModule,
@@ -94,7 +94,8 @@ import { ExportExcelModule } from './export-excel/export-excel.module';
     NotificationModule,
     PermissionModule,
     HtmlToPdfModule,
-    ExportExcelModule
+    ExportExcelModule,
+    TicketPriorityModule
   ],
   controllers: [AppController],
   providers: [
