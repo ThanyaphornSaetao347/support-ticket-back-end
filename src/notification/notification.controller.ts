@@ -1,12 +1,12 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Patch, 
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
   Put,
-  Param, 
-  Delete, 
+  Param,
+  Delete,
   UseGuards,
   Req,
   Query,
@@ -15,7 +15,7 @@ import {
   HttpException,
   ParseIntPipe,
 
- } from '@nestjs/common';
+} from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { Notification, NotificationType } from './entities/notification.entity';
@@ -28,7 +28,7 @@ export class NotificationController {
   constructor(
     private readonly notiService: NotificationService,
     private readonly ticketService: TicketService
-  ) {}
+  ) { }
 
   private extractUserId(req: any): number | null {
     console.log('🔍 Request user object:', req.user);
@@ -418,28 +418,33 @@ export class NotificationController {
     return labels[type] || 'ไม่ทราบประเภท';
   }
 
-  @Post()
-  create(@Body() createNotificationDto: CreateNotificationDto) {
-    return this.notiService.create(createNotificationDto);
-  }
+  /**
+ * ✅ ดึงรายการ notification ของ user ทั้งหมด (ไม่มี pagination)
+ * GET /api/notifications/list
+ */
+  @UseGuards(JwtAuthGuard)
+  @Get('notifications/list')
+  async getNotificationList(@Req() req: any) {
+    try {
+      const userId = this.extractUserId(req);
+      if (!userId) {
+        throw new ForbiddenException('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+      }
 
-  @Get()
-  findAll() {
-    return this.notiService.findAll();
-  }
+      const result = await this.notiService.getListNoti(userId);
+      return result;
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.notiService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateNotificationDto: UpdateNotificationDto) {
-    return this.notiService.update(+id, updateNotificationDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.notiService.remove(+id);
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'เกิดข้อผิดพลาดในการดึงรายการแจ้งเตือน',
+        },
+        HttpStatus.BAD_REQUEST
+      );
+    }
   }
 }

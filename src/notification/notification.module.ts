@@ -13,7 +13,6 @@ import { ConfigModule } from '@nestjs/config';
 import { TicketModule } from '../ticket/ticket.module';
 import { TicketCategory } from '../ticket_categories/entities/ticket_category.entity';
 import { NotificationGateway } from './notification.gateway';
-import { TicketService } from 'src/ticket/ticket.service';
 import { JwtModule } from '@nestjs/jwt';
 
 @Module({
@@ -55,6 +54,9 @@ import { JwtModule } from '@nestjs/jwt';
     NotificationService,
     NotificationGateway,
   ],
-  exports:[NotificationService],
+  exports: [
+    NotificationService,
+    NotificationGateway, // Export ถ้า module อื่นต้องการใช้
+  ],
 })
 export class NotificationModule {}

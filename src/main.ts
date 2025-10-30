@@ -3,6 +3,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
+import * as bodyParser from 'body-parser';
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -48,11 +50,16 @@ async function bootstrap() {
 
   // ใช้ HttpExceptionFilter ทั่วทั้งแอปพลิเคชัน
   app.useGlobalFilters(new HttpExceptionFilter());
+
+  // ✅ เพิ่ม limit สำหรับ request body
+  app.use(bodyParser.json({ limit: '10mb' }));
+  app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
   
   await app.listen(port, '0.0.0.0');
 
   console.log(`🚀 Application is running on: http://0.0.0.0:${port}`);
   console.log(`🌍 External access: http://[your-ip]:${port}`);
-  console.log(`🔑 Using JWT Token authentication (no cookies)`);
+  console.log(`🚀 Application is running on: http://localhost:${port}`);
+  console.log(`🔌 WebSocket is available at: ws://localhost:${port}/notifications`);
 }
 bootstrap();

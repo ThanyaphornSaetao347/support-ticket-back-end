@@ -23,20 +23,11 @@ export class TicketStatusController {
   @UseGuards(JwtAuthGuard)
   @RequireAnyAction('assign_ticket', 'solve_problem')
   @Post('getStatusDDL')
-  async getStatusDDL(
-    @Request() req,
-    @Body() body: { language_id?: string },
-  ) {
+  async getStatusDDL(@Body() body: { language_id?: string }) {
     console.log('Controller received body:', body);
-
-    const userId = req.user?.id; // ✅ ดึง userId จาก token
-    if (!userId) {
-      throw new UnauthorizedException('User ID not found in token');
-    }
-
-    return this.statusService.getStatusDDL(userId, body?.language_id);
+    return this.statusService.getStatusDDL(body?.language_id);
   }
-
+  
   // ✅ แก้ไข function ให้มี return ครบทุก path
   private getLanguage(req: any, defaultLang: string = 'th'): string {
     try {

@@ -26,56 +26,30 @@ export class TicketStatusService {
     private dataSource: DataSource,
   ) { }
 
-  // เพิ่ม method นี้
-  async checkUserPermissions(userId: number): Promise<number[]> {
-    const rows = await this.dataSource.query(
-      'SELECT role_id FROM users_allow_role WHERE user_id = $1',
-      [userId]
-    );
-    // rows = [{ role_id: 1 }, { role_id: 2 }, ...]
-    const roleIds = rows.map(r => r.role_id);
-    return roleIds;
-  }
-
-  async getStatusDDL(userId: number, languageId?: string) {
+  async getStatusDDL(languageId?: string) {
     try {
       console.log('Received languageId:', languageId);
 
-      const userPermissions: number[] = await this.checkUserPermissions(userId);
-      const adminChangeStatus = await this.permissionService.canAssignTicket(userId, userPermissions);
-      const supportChangeStatus = await this.permissionService.canSolveProblem(userId, userPermissions);
-
+      // ใช้ raw SQL query แทน relation
       let queryBuilder = this.statusLangRepo
         .createQueryBuilder('tsl')
-        .innerJoin('ticket_status', 'ts', 'ts.id = tsl.status_id');
-
+        .innerJoin('ticket_status', 'ts', 'ts.id = tsl.status_id'); // แก้ JOIN condition
+      
       if (languageId && languageId.trim() !== '') {
-        queryBuilder = queryBuilder.where('tsl.language_id = :languageId', {
-          languageId: languageId.trim(),
+        queryBuilder = queryBuilder.where('tsl.language_id = :languageId', { 
+          languageId: languageId.trim() 
         });
-      }
-
-      // ✅ เงื่อนไขกรองสถานะตามสิทธิ์
-      if (adminChangeStatus) {
-        queryBuilder = queryBuilder.andWhere('ts.id IN (:...statusIds)', { statusIds: [2, 6] });
-      } else if (supportChangeStatus) {
-        queryBuilder = queryBuilder.andWhere('ts.id IN (:...statusIds)', { statusIds: [3, 4, 5] });
-      } else {
-        // ❌ ไม่มีสิทธิ์ใด ๆ
-        return {
-          code: 0,
-          message: 'You do not have permission to view statuses.', // 👈 เปลี่ยนข้อความตรงนี้
-          data: [],
-        };
       }
 
       const results = await queryBuilder
         .select([
-          'ts.id as ts_id',
+          'ts.id as ts_id', 
           'tsl.name as tsl_name',
-          'tsl.language_id as tsl_language_id',
+          'tsl.language_id as tsl_language_id'
         ])
         .getRawMany();
+
+      console.log('Fixed Query results:', results);
 
       return {
         code: 1,

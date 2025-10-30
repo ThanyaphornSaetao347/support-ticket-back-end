@@ -42,10 +42,17 @@ export class NotificationService {
    * 2️⃣ Status Change
    * 3️⃣ Assignment
    */
+  /**
+   * ตรวจสอบ ticket แล้วสร้าง Notification + ส่ง Email + WebSocket
+   * ครอบคลุม 3 กรณี:
+   * 1️⃣ New Ticket
+   * 2️⃣ Status Change
+   * 3️⃣ Assignment
+   */
   async notifyAllTicketChanges(
     ticketNo: string,
     options: { statusId?: number; assignedUserId?: number; isNewTicket?: boolean }
-  ) {
+  ): Promise<Notification[]> {
     const { statusId, assignedUserId, isNewTicket } = options;
     const notifications: Notification[] = [];
 
@@ -58,9 +65,9 @@ export class NotificationService {
         const newTicketNotis = await this.createNewTicketNotification(ticketNo);
         notifications.push(...newTicketNotis);
 
-        // ✅ ส่งไป frontend
+        // ✅ ส่งไป frontend ทุก notification
         for (const noti of newTicketNotis) {
-          await this.notificationGateway.sendNotificationToUser(noti.user_id, noti);
+          await this.sendWebSocketNotification(noti);
         }
       }
 
@@ -70,9 +77,7 @@ export class NotificationService {
         const statusChangeNoti = await this.createStatusChangeNotification(ticketNo, statusId);
         if (statusChangeNoti) {
           notifications.push(statusChangeNoti);
-
-          // ✅ ส่งไป frontend
-          await this.notificationGateway.sendNotificationToUser(statusChangeNoti.user_id, statusChangeNoti);
+          await this.sendWebSocketNotification(statusChangeNoti);
         }
       }
 
@@ -82,8 +87,7 @@ export class NotificationService {
         const assignmentNoti = await this.createAssignmentNotification(ticketNo, assignedUserId);
         if (assignmentNoti) {
           notifications.push(assignmentNoti);
-          // ✅ ส่งไป frontend
-          await this.notificationGateway.sendNotificationToUser(assignedUserId, assignmentNoti);
+          await this.sendWebSocketNotification(assignmentNoti);
         }
       }
 
@@ -141,7 +145,7 @@ export class NotificationService {
       // ดึงข้อมูล ticket
       const ticket = await this.ticketRepo.findOne({
         where: { ticket_no: ticketNo },
-        relations: ['user'] // ถ้ามี relation กับ user
+        relations: ['user']
       });
 
       if (!ticket) {
@@ -196,10 +200,7 @@ export class NotificationService {
       const savedNotification = await this.notiRepo.save(notification);
       console.log(`✅ Status change notification created with ID: ${savedNotification.id}`);
 
-      // ส่ง WebSocket notification
-      await this.sendWebSocketNotification(savedNotification);
-
-      // ส่ง email แบบ async
+      // ส่ง email แบบ async (don't wait)
       this.sendEmailNotification(savedNotification).catch(error => {
         console.error('❌ Failed to send status change email:', error);
       });
@@ -1110,7 +1111,10 @@ export class NotificationService {
   async getUnreadCount(user_id: number): Promise<number> {
     try {
       const items = await this.notiRepo.find({
-        where: { is_read: false },
+        where: {
+          user_id: user_id,
+          is_read: false
+        }
       });
 
       console.log('🔍 Notifications in DB:', items);
@@ -1209,27 +1213,215 @@ export class NotificationService {
     }
   }
 
-  // ================================
-  // เมธอดเดิมที่ยังไม่ได้ implement
-  // ================================
+  /**
+ * ดึงรายการ notification ของ user แบบง่ายๆ ไม่มี pagination
+ * @param user_id - ID ของ user
+ */
+  async getListNoti(user_id: number) {
+    try {
+      const notifications = await this.notiRepo
+        .createQueryBuilder('n')
+        .leftJoinAndSelect('n.ticket', 't')
+        .leftJoinAndSelect('n.status', 's')
+        // ✅ Join กับ TicketStatusLanguage เพื่อดึง name
+        .leftJoin('ticket_status_language', 'tsl', 'tsl.status_id = s.id AND tsl.language_id = :lang', { lang: 'th' })
+        .addSelect('tsl.name', 'status_name')
+        .where('n.user_id = :user_id', { user_id })
+        .orderBy('n.create_date', 'DESC')
+        .getRawAndEntities();
 
-  create(createNotificationDto: CreateNotificationDto) {
-    return 'This action adds a new notification';
+      // ใช้ getRawAndEntities() เพื่อให้ได้ทั้ง entities และ raw data
+      const { entities, raw } = notifications;
+
+      // Format data ให้เหมาะกับการแสดงผล
+      const formattedNotifications = entities.map((notification, index) => ({
+        id: notification.id,
+        title: notification.title, // ✅ title อยู่ใน notification
+        message: notification.message,
+        ticket_no: notification.ticket_no,
+        notification_type: notification.notification_type,
+        is_read: notification.is_read,
+        create_date: notification.create_date,
+        read_at: notification.read_at,
+
+        // เพิ่มข้อมูลสำหรับแสดง badge และสี
+        type_label: this.getTypeLabel(notification.notification_type),
+        type_color: this.getTypeColor(notification.notification_type),
+        type_icon: this.getTypeIcon(notification.notification_type),
+
+        // Format วันที่เป็น relative time
+        time_ago: this.formatTimeAgo(notification.create_date),
+
+        // ข้อมูล ticket (ถ้ามี)
+        ticket: notification.ticket ? {
+          id: notification.ticket.id,
+          ticket_no: notification.ticket.ticket_no,
+          // title: notification.title, // ถ้าต้องการใช้ title จาก notification
+          status_id: notification.ticket.status_id,
+        } : null,
+
+        // ✅ ข้อมูล status (ใช้ name จาก raw data)
+        status: notification.status ? {
+          id: notification.status.id,
+          name: raw[index]?.status_name || 'ไม่ระบุ', // ✅ ดึง name จาก join
+        } : null,
+      }));
+
+      // นับจำนวน unread
+      const unread_count = await this.notiRepo.count({
+        where: {
+          user_id: user_id,
+          is_read: false,
+        },
+      });
+
+      return {
+        success: true,
+        data: {
+          notifications: formattedNotifications,
+          summary: {
+            total: formattedNotifications.length,
+            unread_count,
+          },
+        },
+      };
+
+    } catch (error) {
+      console.error('❌ Error getting notification list:', error);
+      throw error;
+    }
   }
 
-  findAll() {
-    return 'This action returns all notification';
+  /**
+   * Helper: แปลง notification_type เป็น label ภาษาไทย
+   */
+  private getTypeLabel(type: NotificationType): string {
+    const labels = {
+      [NotificationType.NEW_TICKET]: 'Ticket ใหม่',
+      [NotificationType.STATUS_CHANGE]: 'อัพเดทสถานะ',
+      [NotificationType.ASSIGNMENT]: 'มอบหมายงาน',
+    };
+    return labels[type] || 'แจ้งเตือน';
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} notification`;
+  /**
+   * Helper: กำหนดสีสำหรับแต่ละประเภท notification
+   */
+  private getTypeColor(type: NotificationType): string {
+    const colors = {
+      [NotificationType.NEW_TICKET]: '#FF9500', // สีส้ม
+      [NotificationType.STATUS_CHANGE]: '#007AFF', // สีน้ำเงิน
+      [NotificationType.ASSIGNMENT]: '#34C759', // สีเขียว
+    };
+    return colors[type] || '#8E8E93'; // สีเทา default
   }
 
-  update(id: number, updateNotificationDto: UpdateNotificationDto) {
-    return `This action updates a #${id} notification`;
+  /**
+   * Helper: กำหนด icon สำหรับแต่ละประเภท notification
+   */
+  private getTypeIcon(type: NotificationType): string {
+    const icons = {
+      [NotificationType.NEW_TICKET]: '📋',
+      [NotificationType.STATUS_CHANGE]: '🔄',
+      [NotificationType.ASSIGNMENT]: '👤',
+    };
+    return icons[type] || '🔔';
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} notification`;
+  /**
+   * Helper: แปลง date เป็น relative time
+   */
+  private formatTimeAgo(date: Date): string {
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - new Date(date).getTime()) / 1000);
+
+    if (diffInSeconds < 60) {
+      return 'เมื่อสักครู่';
+    }
+
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
+      return `${diffInMinutes} นาทีที่แล้ว`;
+    }
+
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) {
+      return `${diffInHours} ชั่วโมงที่แล้ว`;
+    }
+
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) {
+      return `${diffInDays} วันที่แล้ว`;
+    }
+
+    const diffInWeeks = Math.floor(diffInDays / 7);
+    if (diffInWeeks < 4) {
+      return `${diffInWeeks} สัปดาห์ที่แล้ว`;
+    }
+
+    const diffInMonths = Math.floor(diffInDays / 30);
+    if (diffInMonths < 12) {
+      return `${diffInMonths} เดือนที่แล้ว`;
+    }
+
+    const diffInYears = Math.floor(diffInDays / 365);
+    return `${diffInYears} ปีที่แล้ว`;
+  }
+
+  /**
+   * ดึง notification แบบแยกตามประเภท (สำหรับ tabs)
+   */
+  async getListNotiByTabs(user_id: number) {
+    try {
+      // ดึงทั้งหมด
+      const allNotifications = await this.getListNoti(user_id);
+
+      // แยกตามประเภท
+      const newTickets = allNotifications.data.notifications.filter(
+        n => n.notification_type === NotificationType.NEW_TICKET
+      );
+
+      const statusChanges = allNotifications.data.notifications.filter(
+        n => n.notification_type === NotificationType.STATUS_CHANGE
+      );
+
+      const assignments = allNotifications.data.notifications.filter(
+        n => n.notification_type === NotificationType.ASSIGNMENT
+      );
+
+      return {
+        success: true,
+        data: {
+          tabs: {
+            all: {
+              label: 'ทั้งหมด',
+              count: allNotifications.data.notifications.length,
+              notifications: allNotifications.data.notifications,
+            },
+            new_tickets: {
+              label: 'Ticket ใหม่',
+              count: newTickets.length,
+              notifications: newTickets,
+            },
+            status_changes: {
+              label: 'อัพเดทสถานะ',
+              count: statusChanges.length,
+              notifications: statusChanges,
+            },
+            assignments: {
+              label: 'มอบหมายงาน',
+              count: assignments.length,
+              notifications: assignments,
+            },
+          },
+          unread_count: allNotifications.data.summary.unread_count,
+          total: allNotifications.data.summary.total,
+        },
+      };
+
+    } catch (error) {
+      console.error('❌ Error getting notification tabs:', error);
+      throw error;
+    }
   }
 }
